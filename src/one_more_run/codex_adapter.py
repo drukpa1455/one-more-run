@@ -322,7 +322,7 @@ def codex_environment() -> dict[str, str]:
     environment = {
         name: value
         for name, value in os.environ.items()
-        if not name.startswith(("OMR_", "POMERIUM_"))
+        if not name.startswith(("OMR_", "POMERIUM_", "HINDSIGHT_"))
         and name not in {"AKASH_API_KEY", "CODEX_API_KEY", "OPENAI_API_KEY"}
     }
     api_key = secret("CODEX_API_KEY")
