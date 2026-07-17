@@ -1,4 +1,5 @@
 import json
+from argparse import Namespace
 from dataclasses import asdict
 
 import pytest
@@ -11,8 +12,10 @@ from one_more_run.cli import (
     ProtocolError,
     format_metric,
     load,
+    retain_memory,
     split_adapter,
 )
+from one_more_run.hindsight import MAX_MEMORY_CHARS
 from one_more_run.protocol import identify_candidate
 
 
@@ -111,6 +114,14 @@ def test_split_adapter_keeps_run_options():
     assert arguments == ["run", "research.md", "--plain"]
 
 
+def test_hindsight_is_an_explicit_run_option():
+    args = cli.parser().parse_args(
+        ["research", "research.md", "--hindsight", "hackathon"]
+    )
+
+    assert args.hindsight == "hackathon"
+
+
 def test_small_metrics_remain_visible():
     assert format_metric(7.155e-8) == "7.155e-08"
 
@@ -132,3 +143,92 @@ def test_doctor_checks_pomerium_only_when_requested(monkeypatch):
         monkeypatch.setenv(name, "configured")
 
     assert cli.doctor(pomerium=True) == 0
+
+
+def test_verified_experiment_becomes_idempotent_hindsight_memory():
+    calls = []
+
+    class Memory:
+        def retain(self, *args):
+            calls.append(args)
+
+    candidate, candidate_sha256 = identify_candidate(CANDIDATE)
+    plan = ExperimentPlan(1, "try momentum", candidate, candidate_sha256, EVALUATOR)
+    experiment = Experiment(plan, 0.9, "keep", 3.0, 0.1, "test")
+    campaign = Campaign("Minimize loss")
+
+    retain_memory(Memory(), campaign, experiment, "campaign")
+
+    content, document_id, metadata, context = calls[0]
+    assert 'Candidate: {"learning_rate":0.1,"momentum":0.0,"steps":80}' in content
+    assert "metric 0.9; lower is better; decision keep" in content
+    assert document_id == f"omr-campaign-1-{candidate_sha256}"
+    assert metadata["candidate_sha256"] == candidate_sha256
+    assert context == "One More Run: Minimize loss"
+
+
+def test_hindsight_memory_bounds_large_code_candidates():
+    calls = []
+
+    class Memory:
+        def retain(self, *args):
+            calls.append(args)
+
+    candidate, candidate_sha256 = identify_candidate(
+        {"files": {"train.py": "x" * (MAX_MEMORY_CHARS * 2)}}
+    )
+    plan = ExperimentPlan(
+        1, "try a larger model", candidate, candidate_sha256, EVALUATOR
+    )
+    experiment = Experiment(plan, 0.9, "keep", 3.0, 0.1, "test")
+
+    retain_memory(Memory(), Campaign("Minimize loss"), experiment, "campaign")
+
+    content = calls[0][0]
+    assert len(content) == MAX_MEMORY_CHARS
+    assert "metric 0.9; lower is better; decision keep" in content
+
+
+def test_run_recalls_memory_without_forwarding_hindsight_credentials(
+    monkeypatch, tmp_path
+):
+    research = tmp_path / "research.md"
+    research.write_text("Minimize loss")
+    captured = {}
+
+    class Memory:
+        def recall(self, query):
+            assert query == "Minimize loss"
+            return "- Momentum failed before"
+
+    class Process:
+        def poll(self):
+            return 0
+
+    def popen(adapter, **options):
+        captured.update(options)
+        return Process()
+
+    monkeypatch.setenv("HINDSIGHT_API_KEY", "secret")
+
+    def memory(environment):
+        assert environment["OMR_HINDSIGHT_BANK"] == "hackathon"
+        return Memory()
+
+    monkeypatch.setattr(cli, "hindsight_from_environment", memory)
+    monkeypatch.setattr(cli.subprocess, "Popen", popen)
+    monkeypatch.setattr(cli, "consume", lambda *args: 0)
+    args = Namespace(
+        research=research,
+        adapter=["adapter"],
+        ledger=tmp_path / "experiments.jsonl",
+        maximize=False,
+        max_runs=1,
+        timeout=1.0,
+        plain=True,
+        hindsight="hackathon",
+    )
+
+    assert cli.run(args) == 0
+    assert captured["env"]["OMR_MEMORY"] == "- Momentum failed before"
+    assert "HINDSIGHT_API_KEY" not in captured["env"]

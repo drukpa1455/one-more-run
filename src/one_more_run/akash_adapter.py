@@ -48,7 +48,9 @@ class CoordinateSearch:
 
     def propose(self) -> tuple[str, dict[str, Any]]:
         if self.pending is not None:
-            raise RuntimeError("observe the pending experiment before proposing another")
+            raise RuntimeError(
+                "observe the pending experiment before proposing another"
+            )
         if self.best_metric is None:
             candidate = dict(self.best_candidate)
             self.pending = (candidate, None)
@@ -59,7 +61,9 @@ class CoordinateSearch:
             candidate = self.adjusted(axis)
             if candidate != self.best_candidate:
                 action = "increase" if self.direction > 0 else "decrease"
-                hypothesis = f"{self.reason}; {action} {axis.name} from the current champion"
+                hypothesis = (
+                    f"{self.reason}; {action} {axis.name} from the current champion"
+                )
                 self.pending = (candidate, axis)
                 return hypothesis, candidate
             self.reason = f"{axis.name} is at its boundary"

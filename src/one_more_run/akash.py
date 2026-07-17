@@ -65,7 +65,9 @@ class PomeriumRoute:
     zero_token: str
 
 
-def run(args: argparse.Namespace, run_campaign: Callable[[argparse.Namespace], int]) -> int:
+def run(
+    args: argparse.Namespace, run_campaign: Callable[[argparse.Namespace], int]
+) -> int:
     """Deploy a worker, run a campaign, and close the deployment."""
     protected = getattr(args, "pomerium", False)
     if not args.yes:
@@ -136,7 +138,9 @@ def orchestrate(
     failed = False
     assigned_ip = None
     try:
-        bid = wait_for_bid(client, deployment.dseq, Decimal(str(args.max_bid)), deadline)
+        bid = wait_for_bid(
+            client, deployment.dseq, Decimal(str(args.max_bid)), deadline
+        )
         console.print(
             f"Accepting [cyan]{format(bid.amount, 'f')} {bid.denom}/block[/cyan] "
             f"from {bid.provider}"
@@ -265,7 +269,11 @@ class ConsoleAPI:
         payload: Any = None,
         timeout: float | None = None,
     ) -> Any:
-        body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
+        body = (
+            None
+            if payload is None
+            else json.dumps(payload, separators=(",", ":")).encode()
+        )
         headers = {"User-Agent": "one-more-run/0.1", "x-api-key": self.api_key}
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -291,7 +299,9 @@ class ConsoleAPI:
         return value["data"]
 
 
-def wait_for_bid(client: ConsoleAPI, dseq: str, max_bid: Decimal, deadline: float) -> Bid:
+def wait_for_bid(
+    client: ConsoleAPI, dseq: str, max_bid: Decimal, deadline: float
+) -> Bid:
     while True:
         eligible = [
             bid
@@ -405,7 +415,9 @@ def worker_health(
         headers["X-Pomerium-Authorization"] = jwt
     request = urllib.request.Request(uri + "/healthz", headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=min(10, remaining(deadline, "worker health"))) as response:
+        with urllib.request.urlopen(
+            request, timeout=min(10, remaining(deadline, "worker health"))
+        ) as response:
             value = json.load(response)
     except (OSError, ValueError):
         return None

@@ -133,6 +133,34 @@ current measured champion. An improvement advances the champion; a regression
 reverses that coordinate before the search moves on. The authenticated evaluator
 and workload stay fixed; only the bounded candidate crosses the boundary.
 
+## Remember across campaigns
+
+One More Run can optionally use [Hindsight](https://github.com/vectorize-io/hindsight)
+as long-term memory. Start its local server, then opt a campaign into a bank:
+
+```bash
+set -a; source .env; set +a
+docker run --rm -d --name hindsight -p 8888:8888 -p 9999:9999 \
+  -e HINDSIGHT_API_LLM_API_KEY="$OPENAI_API_KEY" \
+  -v hindsight-data:/home/hindsight/.pg0 \
+  ghcr.io/vectorize-io/hindsight:latest
+uv run omr run research.md --hindsight one-more-run --plain -- \
+  uv run python examples/demo_adapter.py
+```
+
+`HINDSIGHT_API_URL` defaults to `http://localhost:8888`; set
+`HINDSIGHT_API_KEY` when the server requires a bearer token. The environment
+variable `OMR_HINDSIGHT_BANK` is equivalent to `--hindsight BANK`. Without
+either, Hindsight is inactive. Before an enabled campaign,
+the controller recalls relevant experience into `OMR_MEMORY` for the research
+adapter. After each receipt is validated and durably appended to the ledger, it
+retains the hypothesis, candidate, evaluator, metric, and decision under an
+idempotent document ID. Memory calls are bounded and fail open, so unavailable
+memory never consumes an experiment slot. Hindsight is a rebuildable index;
+the JSONL ledger remains the source of truth. Use a new `--ledger` path for a
+second campaign; the demo adapter prints the recalled experience to standard
+error.
+
 The `autoresearch` submodule is the reference workload. The included nonlinear
 regression task is intentionally small enough for a hackathon demo; adapters for
 that full workload and AcquaTerra can reuse the same edit/evaluate/keep contract.
