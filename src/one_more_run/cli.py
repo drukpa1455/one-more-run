@@ -483,7 +483,6 @@ def render(campaign: Campaign) -> Group:
     table.add_column("METRIC", justify="right", width=10)
     table.add_column("DECISION", width=9)
     table.add_column("TIME", justify="right", width=8)
-    table.add_column("COST", justify="right", width=8)
     for experiment in campaign.experiments[-10:]:
         style = "green" if experiment.decision == "keep" else "red"
         metric = format_metric(experiment.metric)
@@ -494,7 +493,6 @@ def render(campaign: Campaign) -> Group:
             metric,
             Text(experiment.decision, style=style),
             f"{experiment.seconds:.1f}s",
-            f"${experiment.cost_usd:.2f}",
         )
 
     if campaign.current_plan is not None:

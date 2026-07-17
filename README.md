@@ -85,13 +85,33 @@ GPU receipts and their complete source bundles. Its general neural candidate
 reduced MSE from `0.854451` to `0.002781`, a 99.67% reduction. A later
 source-informed exact-basis result is preserved and disclosed separately.
 
-Then use the recording to show evidence rather than a spinner:
+### Copy-paste presentation mode
+
+Do not provision paid compute during the pitch. Paste this before speaking and
+leave the verified ledger on screen while walking through the visual material:
 
 ```bash
-uv run omr doctor
-find examples/code_candidate -type f -maxdepth 2
+uv run omr doctor && \
+uv run pytest -q && \
 uv run omr status demo/experiments.jsonl
 ```
+
+This checks the configured Codex and Akash boundary, runs the full test suite,
+and renders the real Akash receipts without network access or spend. To show a
+fresh loop instead, run the same controller against the deterministic local
+adapter:
+
+```bash
+DEMO_LEDGER="$(mktemp -d)/experiments.jsonl"
+uv run omr run research.md \
+  --max-runs 6 \
+  --ledger "$DEMO_LEDGER" \
+  -- uv run python examples/demo_adapter.py
+```
+
+The local path uses no credentials, network, or paid compute. The recorded
+Akash deployment is intentionally closed; automatic cleanup is part of the
+demo.
 
 Suggested timing: 20 seconds for the problem and diagram, 30 seconds for the
 modular candidate and readiness loop, 60 seconds for the real Akash ledger and
