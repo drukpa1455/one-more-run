@@ -118,6 +118,24 @@ def test_small_metrics_remain_visible():
     assert format_metric(7.155e-8) == "7.155e-08"
 
 
+def test_doctor_checks_the_pomerium_boundary(monkeypatch):
+    monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setenv("CODEX_API_KEY", "codex-secret")
+    monkeypatch.setenv("AKASH_API_KEY", "akash-secret")
+    for name in (
+        "POMERIUM_ZERO_TOKEN",
+        "POMERIUM_ZERO_API_TOKEN",
+        "POMERIUM_ROUTE_URL",
+        "POMERIUM_SERVICE_ACCOUNT_JWT",
+    ):
+        monkeypatch.setenv(name, "configured")
+
+    assert cli.doctor() == 0
+
+    monkeypatch.delenv("POMERIUM_SERVICE_ACCOUNT_JWT")
+    assert cli.doctor() == 1
+
+
 def test_verified_experiment_becomes_idempotent_hindsight_memory():
     calls = []
 

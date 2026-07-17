@@ -89,7 +89,7 @@ seconds for the product close and one-command rerun.
 
 ## Try the numeric loop locally
 
-Clone the submodule and run the deterministic adapter:
+Clone the repository and its submodules, then run the deterministic adapter:
 
 ```bash
 git clone --recurse-submodules https://github.com/drukpa1455/one-more-run.git
@@ -144,13 +144,13 @@ uv run omr run research.md --plain -- uv run python examples/demo_adapter.py
 `HINDSIGHT_API_URL` defaults to `http://localhost:8888`; set
 `HINDSIGHT_API_KEY` when the server requires a bearer token. Before a campaign,
 the controller recalls relevant experience into `OMR_MEMORY` for the research
-adapter. After each receipt is validated and durably appended to the ledger, it
+adapter; the Codex path exposes it as `memory.md` during proposal turns. After
+each receipt is validated and durably appended to the ledger, the controller
 retains the hypothesis, candidate, evaluator, metric, and decision under an
 idempotent document ID. Memory calls are bounded and fail open, so unavailable
-memory never consumes an experiment slot. Hindsight is a rebuildable index;
-the JSONL ledger remains the source of truth. Use a new `--ledger` path for a
-second campaign; the demo adapter prints the recalled experience to standard
-error.
+memory never consumes an experiment slot. Hindsight is a rebuildable index; the
+JSONL ledger remains the source of truth. Use a new `--ledger` path for a second
+campaign; the demo adapter prints the recalled experience to standard error.
 
 The `autoresearch` submodule is the reference workload. The included nonlinear
 regression task is intentionally small enough for a hackathon demo; adapters for

@@ -320,7 +320,8 @@ def parser() -> argparse.ArgumentParser:
     )
 
     commands.add_parser(
-        "doctor", help="check Codex and Akash prerequisites without printing secrets"
+        "doctor",
+        help="check Codex, Akash, and Pomerium prerequisites without printing secrets",
     )
     return root
 
@@ -354,6 +355,12 @@ def doctor() -> int:
         "Codex CLI": codex is not None,
         "Codex authentication": bool(codex_key or logged_in),
         "Akash credential": secret("AKASH_API_KEY") is not None,
+        "Pomerium cluster token": bool(os.environ.get("POMERIUM_ZERO_TOKEN")),
+        "Pomerium API token": bool(os.environ.get("POMERIUM_ZERO_API_TOKEN")),
+        "Pomerium route": bool(os.environ.get("POMERIUM_ROUTE_URL")),
+        "Pomerium service account": bool(
+            os.environ.get("POMERIUM_SERVICE_ACCOUNT_JWT")
+        ),
     }
     for label, ready in checks.items():
         console.print(
