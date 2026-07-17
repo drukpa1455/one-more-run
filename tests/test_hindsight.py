@@ -21,7 +21,9 @@ def test_recall_returns_a_bounded_memory_prompt(monkeypatch):
 
     def urlopen(request, timeout):
         calls.append((request, timeout))
-        return Response(b'{"results":[{"text":"Momentum failed"},{"text":"LR improved"}]}')
+        return Response(
+            b'{"results":[{"text":"Momentum failed"},{"text":"LR improved"}]}'
+        )
 
     monkeypatch.setattr(hindsight.urllib.request, "urlopen", urlopen)
     client = Hindsight("https://memory.example", "one more run", "secret")
@@ -67,6 +69,7 @@ def test_hindsight_errors_do_not_expose_response_bodies(monkeypatch):
 
 def test_hindsight_is_enabled_by_a_bank():
     assert from_environment({}) is None
+    assert from_environment({"HINDSIGHT_API_KEY": "secret"}) is None
 
     client = from_environment({"OMR_HINDSIGHT_BANK": "research"})
 
