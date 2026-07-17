@@ -80,6 +80,11 @@ uv run omr research research.md \
   --yes
 ```
 
+The checked-in [verified Akash campaign](demo/README.md) contains three real
+GPU receipts and their complete source bundles. Its general neural candidate
+reduced MSE from `0.854451` to `0.002781`, a 99.67% reduction. A later
+source-informed exact-basis result is preserved and disclosed separately.
+
 Then use the recording to show evidence rather than a spinner:
 
 ```bash

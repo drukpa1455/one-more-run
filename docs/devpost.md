@@ -27,6 +27,14 @@ and a winning source bundle tied to its measurement. The same contract can
 move from this compact nonlinear regression task to a real training repository
 or another compute adapter.
 
+In a real three-run Akash campaign on a Quadro RTX 8000, Codex replaced the
+linear baseline with standardized inputs, a 32×32 SiLU network, AdamW, and a
+cosine schedule. Held-out MSE fell from `0.854451` to `0.002781`, a 99.67%
+reduction. A third run inspected the public evaluator implementation and
+synthesized an exact feature basis, reaching `3.0408e-15`; validation rows
+remained held out, but we disclose that source access rather than calling it
+blind discovery. The deployment was closed automatically after the campaign.
+
 One More Prompt starts the idea. **One More Run tests it.**
 
 ## Built with
