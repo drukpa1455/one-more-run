@@ -142,6 +142,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command_name == "run":
             args.adapter = adapter
             return run(args)
+        if args.command_name == "akash":
+            from one_more_run.akash import run as run_on_akash
+
+            return run_on_akash(args, run)
         if args.command_name == "status":
             return status(args)
     except (OSError, ProtocolError, ValueError) as error:
@@ -161,6 +165,19 @@ def parser() -> argparse.ArgumentParser:
     run_command.add_argument("--timeout", type=positive_float, default=3600.0, metavar="SECONDS")
     run_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
     run_command.add_argument("--plain", action="store_true", help="print events without a live display")
+
+    akash_command = commands.add_parser("akash", help="deploy, run, and close an Akash GPU worker")
+    akash_command.add_argument("research", type=Path, help="research objective in Markdown")
+    akash_command.add_argument("--sdl", type=Path, default=Path("deploy/akash.yaml"))
+    akash_command.add_argument("--ledger", type=Path, default=Path("experiments.jsonl"))
+    akash_command.add_argument("--max-runs", type=positive_int, default=3)
+    akash_command.add_argument("--timeout", type=positive_float, default=600.0, metavar="SECONDS")
+    akash_command.add_argument("--deposit", type=positive_float, default=0.5, metavar="USD")
+    akash_command.add_argument("--max-bid", type=positive_float, default=1000.0, metavar="UACT")
+    akash_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
+    akash_command.add_argument("--plain", action="store_true", help="print events without a live display")
+    akash_command.add_argument("--yes", action="store_true", help="authorize the displayed spend limits")
+
     status_command = commands.add_parser("status", help="show a saved experiment ledger")
     status_command.add_argument("ledger", type=Path, nargs="?", default=Path("experiments.jsonl"))
     status_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
@@ -183,6 +200,9 @@ def run(args: argparse.Namespace) -> int:
         OMR_RESEARCH=str(args.research.resolve()),
         OMR_MAX_RUNS=str(args.max_runs),
     )
+    environment.update(getattr(args, "environment", {}))
+    for name in getattr(args, "drop_environment", ()):
+        environment.pop(name, None)
     process = subprocess.Popen(
         adapter,
         stdout=subprocess.PIPE,
@@ -450,7 +470,7 @@ def positive_int(value: str) -> int:
 
 def positive_float(value: str) -> float:
     parsed = float(value)
-    if parsed <= 0:
+    if not math.isfinite(parsed) or parsed <= 0:
         raise argparse.ArgumentTypeError("must be positive")
     return parsed
 

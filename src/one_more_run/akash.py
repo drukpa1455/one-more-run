@@ -1,0 +1,377 @@
+"""Bounded Akash Console deployment lifecycle."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import secrets
+import sys
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+from typing import Any
+
+from rich.console import Console
+
+
+API_URL = "https://console-api.akash.network"
+MIN_DEPOSIT_USD = 0.5
+POLL_SECONDS = 3.0
+EVALUATOR = "smoke.linear-regression.v1"
+
+
+class AkashError(ValueError):
+    """The Akash lifecycle could not safely continue."""
+
+
+@dataclass(frozen=True)
+class Deployment:
+    dseq: str
+    manifest: str
+
+
+@dataclass(frozen=True)
+class Bid:
+    dseq: str
+    gseq: int
+    oseq: int
+    provider: str
+    amount: Decimal
+    denom: str
+    state: str
+
+
+def run(args: argparse.Namespace, run_campaign: Callable[[argparse.Namespace], int]) -> int:
+    """Deploy a worker, run a campaign, and close the deployment."""
+    if not args.yes:
+        raise AkashError(
+            f"deployment would deposit ${args.deposit:.2f}, accept at most "
+            f"{args.max_bid:g} uact/block, and run for at most {args.timeout:g}s; "
+            "pass --yes to authorize it"
+        )
+    if args.deposit < MIN_DEPOSIT_USD:
+        raise AkashError(f"deposit must be at least ${MIN_DEPOSIT_USD:.2f}")
+    if not args.research.is_file():
+        raise AkashError(f"research objective not found: {args.research}")
+    if args.ledger.exists():
+        raise AkashError(f"ledger already exists: {args.ledger}")
+    api_key = os.environ.get("AKASH_API_KEY")
+    if not api_key:
+        raise AkashError("set AKASH_API_KEY in the environment")
+    if not args.sdl.is_file():
+        raise AkashError(f"Akash SDL not found: {args.sdl}")
+
+    deadline = time.monotonic() + args.timeout
+    worker_token = secrets.token_urlsafe(32)
+    sdl = inject_worker_token(args.sdl.read_text(), worker_token)
+    client = ConsoleAPI(api_key, deadline=deadline)
+    return orchestrate(client, args, run_campaign, sdl, worker_token, deadline)
+
+
+def orchestrate(
+    client: ConsoleAPI,
+    args: argparse.Namespace,
+    run_campaign: Callable[[argparse.Namespace], int],
+    sdl: str,
+    worker_token: str,
+    deadline: float,
+) -> int:
+    console = Console(stderr=True)
+    deployment = client.create(sdl, args.deposit)
+    console.print(
+        f"Akash deployment [cyan]{deployment.dseq}[/cyan] created · "
+        f"deposit ${args.deposit:.2f}"
+    )
+
+    failed = False
+    try:
+        bid = wait_for_bid(client, deployment.dseq, Decimal(str(args.max_bid)), deadline)
+        console.print(
+            f"Accepting [cyan]{format(bid.amount, 'f')} {bid.denom}/block[/cyan] "
+            f"from {bid.provider}"
+        )
+        client.lease(deployment, bid)
+        worker_url = wait_for_worker(client, bid, deadline)
+        console.print(f"Worker ready at [cyan]{worker_url}[/cyan]")
+
+        campaign_args = argparse.Namespace(**vars(args))
+        campaign_args.adapter = [sys.executable, "-m", "one_more_run.akash_adapter"]
+        campaign_args.environment = {
+            "OMR_WORKER_URL": worker_url,
+            "OMR_WORKER_TOKEN": worker_token,
+            "OMR_BID_UACT": str(bid.amount),
+        }
+        campaign_args.drop_environment = ["AKASH_API_KEY"]
+        campaign_args.timeout = remaining(deadline, "campaign")
+        return run_campaign(campaign_args)
+    except BaseException:
+        failed = True
+        raise
+    finally:
+        try:
+            client.close(deployment.dseq)
+            console.print(f"Akash deployment [cyan]{deployment.dseq}[/cyan] closed")
+        except Exception as error:
+            if failed:
+                console.print(f"[red]deployment cleanup failed:[/red] {error}")
+            else:
+                raise
+
+
+class ConsoleAPI:
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = API_URL,
+        deadline: float | None = None,
+    ):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.deadline = deadline
+
+    def create(self, sdl: str, deposit: float) -> Deployment:
+        data = self.request(
+            "POST",
+            "/v1/deployments",
+            {"data": {"sdl": sdl, "deposit": deposit}},
+        )
+        if not isinstance(data, dict):
+            raise AkashError("Akash create response data must be an object")
+        return Deployment(text(data, "dseq"), text(data, "manifest"))
+
+    def bids(self, dseq: str) -> list[Bid]:
+        data = self.request("GET", f"/v1/bids?dseq={dseq}")
+        if not isinstance(data, list):
+            raise AkashError("Akash bids response data must be a list")
+        return [bid_from_response(item, dseq) for item in data]
+
+    def lease(self, deployment: Deployment, bid: Bid) -> None:
+        self.request(
+            "POST",
+            "/v1/leases",
+            {
+                "manifest": deployment.manifest,
+                "leases": [
+                    {
+                        "dseq": bid.dseq,
+                        "gseq": bid.gseq,
+                        "oseq": bid.oseq,
+                        "provider": bid.provider,
+                    }
+                ],
+            },
+        )
+
+    def deployment(self, dseq: str) -> dict[str, Any]:
+        data = self.request("GET", f"/v1/deployments/{dseq}")
+        if not isinstance(data, dict):
+            raise AkashError("Akash deployment response data must be an object")
+        return data
+
+    def close(self, dseq: str) -> None:
+        data = self.request("DELETE", f"/v1/deployments/{dseq}", timeout=30)
+        if not isinstance(data, dict) or data.get("success") is not True:
+            raise AkashError("Akash did not confirm deployment closure")
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        payload: Any = None,
+        timeout: float | None = None,
+    ) -> Any:
+        body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
+        headers = {"User-Agent": "one-more-run/0.1", "x-api-key": self.api_key}
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        request = urllib.request.Request(
+            self.base_url + path,
+            data=body,
+            headers=headers,
+            method=method,
+        )
+        if timeout is None:
+            timeout = 30.0
+            if self.deadline is not None:
+                timeout = min(timeout, remaining(self.deadline, "the Akash API"))
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                value = json.load(response)
+        except urllib.error.HTTPError as error:
+            raise AkashError(api_error(error)) from error
+        except (OSError, ValueError) as error:
+            raise AkashError(f"Akash API request failed: {error}") from error
+        if not isinstance(value, dict) or "data" not in value:
+            raise AkashError("Akash API response must contain data")
+        return value["data"]
+
+
+def wait_for_bid(client: ConsoleAPI, dseq: str, max_bid: Decimal, deadline: float) -> Bid:
+    while True:
+        eligible = [
+            bid
+            for bid in client.bids(dseq)
+            if bid.state == "open" and bid.denom == "uact" and bid.amount <= max_bid
+        ]
+        if eligible:
+            return min(eligible, key=lambda bid: (bid.amount, bid.provider))
+        pause(deadline, "an eligible bid")
+
+
+def wait_for_worker(client: ConsoleAPI, bid: Bid, deadline: float) -> str:
+    while True:
+        uri = worker_uri(client.deployment(bid.dseq), bid)
+        if uri:
+            health = worker_health(uri, deadline)
+            if health is not None:
+                if health.get("evaluator") != EVALUATOR:
+                    raise AkashError("worker reported an unexpected evaluator")
+                if health.get("device") != "cuda":
+                    raise AkashError("Akash worker has no CUDA device")
+                return uri
+        pause(deadline, "the GPU worker")
+
+
+def worker_uri(deployment: dict[str, Any], bid: Bid) -> str | None:
+    leases = deployment.get("leases")
+    if not isinstance(leases, list):
+        raise AkashError("Akash deployment leases must be a list")
+    for lease in leases:
+        if not isinstance(lease, dict) or not isinstance(lease.get("id"), dict):
+            raise AkashError("Akash lease must be an object")
+        lease_id = lease["id"]
+        if (
+            str(lease_id.get("dseq")) != bid.dseq
+            or lease_id.get("gseq") != bid.gseq
+            or lease_id.get("oseq") != bid.oseq
+            or lease_id.get("provider") != bid.provider
+        ):
+            continue
+        if lease.get("state") == "closed":
+            raise AkashError("Akash lease closed before the worker became ready")
+        status = lease.get("status")
+        if not isinstance(status, dict):
+            return None
+        services = status.get("services")
+        worker = services.get("worker") if isinstance(services, dict) else None
+        uris = worker.get("uris") if isinstance(worker, dict) else None
+        if not isinstance(uris, list) or not uris or not isinstance(uris[0], str):
+            return None
+        return normalize_uri(uris[0])
+    return None
+
+
+def worker_health(uri: str, deadline: float) -> dict[str, Any] | None:
+    request = urllib.request.Request(uri + "/healthz", headers={"User-Agent": "one-more-run/0.1"})
+    try:
+        with urllib.request.urlopen(request, timeout=min(10, remaining(deadline, "worker health"))) as response:
+            value = json.load(response)
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def inject_worker_token(sdl: str, token: str) -> str:
+    if not token or any(character in token for character in "\r\n="):
+        raise AkashError("worker token contains unsupported characters")
+    if "OMR_WORKER_TOKEN=" in sdl:
+        raise AkashError("SDL already defines OMR_WORKER_TOKEN")
+    lines = sdl.splitlines()
+    try:
+        worker = lines.index("  worker:")
+        end = next(
+            (
+                index
+                for index in range(worker + 1, len(lines))
+                if lines[index].strip()
+                and len(lines[index]) - len(lines[index].lstrip()) <= 2
+            ),
+            len(lines),
+        )
+        image = next(
+            index
+            for index in range(worker + 1, end)
+            if lines[index].startswith("    image:")
+        )
+    except (StopIteration, ValueError) as error:
+        raise AkashError("SDL must define services.worker.image") from error
+    if any(line.startswith("    env:") for line in lines[worker + 1 : end]):
+        raise AkashError("services.worker.env must be owned by the Akash runner")
+    lines[image + 1 : image + 1] = [
+        "    env:",
+        f"      - OMR_WORKER_TOKEN={token}",
+    ]
+    return "\n".join(lines) + ("\n" if sdl.endswith("\n") else "")
+
+
+def bid_from_response(value: Any, expected_dseq: str) -> Bid:
+    if not isinstance(value, dict) or not isinstance(value.get("bid"), dict):
+        raise AkashError("Akash bid must be an object")
+    bid = value["bid"]
+    bid_id = bid.get("id")
+    price = bid.get("price")
+    if not isinstance(bid_id, dict) or not isinstance(price, dict):
+        raise AkashError("Akash bid id and price must be objects")
+    dseq = str(bid_id.get("dseq"))
+    if dseq != expected_dseq:
+        raise AkashError(f"Akash returned a bid for deployment {dseq}")
+    try:
+        amount = Decimal(str(price["amount"]))
+    except (InvalidOperation, KeyError) as error:
+        raise AkashError("Akash bid amount must be a decimal") from error
+    if not amount.is_finite() or amount < 0:
+        raise AkashError("Akash bid amount must be finite and non-negative")
+    return Bid(
+        dseq=dseq,
+        gseq=positive_int(bid_id, "gseq"),
+        oseq=positive_int(bid_id, "oseq"),
+        provider=text(bid_id, "provider"),
+        amount=amount,
+        denom=text(price, "denom"),
+        state=text(bid, "state"),
+    )
+
+
+def api_error(error: urllib.error.HTTPError) -> str:
+    message = error.reason
+    try:
+        value = json.loads(error.read(16_384))
+        if isinstance(value, dict) and isinstance(value.get("message"), str):
+            message = value["message"]
+    except (OSError, ValueError):
+        pass
+    return f"Akash API returned HTTP {error.code}: {message}"
+
+
+def normalize_uri(uri: str) -> str:
+    uri = uri.rstrip("/")
+    return uri if uri.startswith(("http://", "https://")) else f"https://{uri}"
+
+
+def pause(deadline: float, target: str) -> None:
+    time.sleep(min(POLL_SECONDS, remaining(deadline, target)))
+
+
+def remaining(deadline: float, target: str) -> float:
+    seconds = deadline - time.monotonic()
+    if seconds <= 0:
+        raise AkashError(f"timed out waiting for {target}")
+    return seconds
+
+
+def text(value: dict[str, Any], name: str) -> str:
+    item = value.get(name)
+    if not isinstance(item, str) or not item:
+        raise AkashError(f"Akash {name} must be a non-empty string")
+    return item
+
+
+def positive_int(value: dict[str, Any], name: str) -> int:
+    item = value.get(name)
+    if not isinstance(item, int) or isinstance(item, bool) or item < 1:
+        raise AkashError(f"Akash {name} must be a positive integer")
+    return item

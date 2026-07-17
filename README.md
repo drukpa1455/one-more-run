@@ -63,31 +63,34 @@ fixed; only the candidate file crosses the boundary.
 
 The `autoresearch` submodule supplies the initial research workload.
 
-## Try the Akash worker
+## Run on Akash
 
-The first real adapter runs a fixed, bounded optimization workload on one GPU.
-It proves the remote execution path before we allow an agent to submit code.
-
-1. Start the [$100 Akash Console trial](https://akash.network/docs/getting-started/quick-start/)
-   or use an existing funded account.
-2. Deploy [`deploy/akash.yaml`](deploy/akash.yaml) in Akash Console.
-3. Open the deployment logs and copy the generated `worker token`.
-4. Set the endpoint and token only in your shell, then run:
+The end user supplies one Console API credential. The agent-driven CLI owns the
+rest of the deployment lifecycle. Load `AKASH_API_KEY` from a secret manager,
+then run:
 
 ```bash
-export OMR_WORKER_URL=https://your-worker.provider.example
-read -s "OMR_WORKER_TOKEN?Worker token: "
-export OMR_WORKER_TOKEN
-uv run omr run research.md -- uv run python examples/akash_adapter.py
+uv run omr akash research.md --yes
 ```
 
-The worker accepts exactly three bounded numeric parameters; it cannot execute
-submitted code. It serializes experiments, rejects oversized requests, returns
-a receipt identifying the normalized candidate and fixed evaluator, and
-generates a fresh bearer token on every start. The SDL accepts several
-trial-eligible NVIDIA models and caps bids at `1000 uact` per block (about
-$0.60/hour at six-second blocks). Close the deployment immediately after the
-test.
+By default, `omr akash` deposits `$0.50`, accepts only an open bid at or below
+`1000 uact` per block, waits for a CUDA worker, runs three experiments, and
+closes the deployment. Bidding, startup, and research share a ten-minute
+deadline; cleanup gets one final bounded 30-second request. The CLI generates
+the worker token locally and injects it only into the in-memory manifest, so no
+one has to open provider logs. The Console key is not passed to the adapter or
+remote worker. The deployment is closed in cleanup even when bidding, startup,
+or research fails.
+
+`--yes` is the explicit authorization boundary for the displayed deposit, bid,
+and time limits. Keep `AKASH_API_KEY` in a secret manager, never commit it, and
+rotate it after a temporary test. Console API keys grant full account access.
+See the [Managed Wallet API documentation](https://akash.network/docs/api-documentation/console-api/getting-started/).
+
+The current worker accepts exactly three bounded numeric parameters; it cannot
+execute submitted code. It serializes experiments, rejects oversized requests,
+and returns a receipt identifying the normalized candidate and fixed evaluator.
+The SDL accepts several trial-eligible NVIDIA models.
 
 The worker image is published to GHCR from pinned GitHub Actions, and the Akash
 SDL pins its immutable OCI digest.

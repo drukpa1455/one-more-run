@@ -7,7 +7,9 @@ on:
       - .dockerignore
       - .github/workflows/worker-image.yml
       - Dockerfile
-      - src/one_more_run/**
+      - src/one_more_run/__init__.py
+      - src/one_more_run/protocol.py
+      - src/one_more_run/worker.py
 
 permissions:
   contents: read
