@@ -53,7 +53,9 @@ def configure(from_environment: bool = False) -> Path:
     if from_environment:
         supplied = {name: os.environ[name] for name in NAMES if os.environ.get(name)}
         if not supplied:
-            raise ValueError("set CODEX_API_KEY or AKASH_API_KEY before using --from-env")
+            raise ValueError(
+                "set CODEX_API_KEY or AKASH_API_KEY before using --from-env"
+            )
         credentials.update(supplied)
     else:
         prompts = {

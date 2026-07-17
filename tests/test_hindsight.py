@@ -21,7 +21,9 @@ def test_recall_returns_a_bounded_memory_prompt(monkeypatch):
 
     def urlopen(request, timeout):
         calls.append((request, timeout))
-        return Response(b'{"results":[{"text":"Momentum failed"},{"text":"LR improved"}]}')
+        return Response(
+            b'{"results":[{"text":"Momentum failed"},{"text":"LR improved"}]}'
+        )
 
     monkeypatch.setattr(hindsight.urllib.request, "urlopen", urlopen)
     client = Hindsight("https://memory.example", "one more run", "secret")

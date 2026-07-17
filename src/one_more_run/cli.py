@@ -73,7 +73,9 @@ class Campaign:
         measured = [item for item in self.experiments if item.metric is not None]
         if not measured:
             return None
-        return (max if self.maximize else min)(measured, key=lambda item: float(item.metric))
+        return (max if self.maximize else min)(
+            measured, key=lambda item: float(item.metric)
+        )
 
     def apply(self, event: dict[str, Any]) -> Experiment | None:
         kind = text_field(event, "type")
@@ -183,30 +185,54 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(prog="omr", description="Autonomous research runs on any compute")
+    root = argparse.ArgumentParser(
+        prog="omr", description="Autonomous research runs on any compute"
+    )
     commands = root.add_subparsers(dest="command_name", required=True)
 
-    run_command = commands.add_parser("run", help="run a campaign adapter and track its experiments")
-    run_command.add_argument("research", type=Path, help="research objective in Markdown")
+    run_command = commands.add_parser(
+        "run", help="run a campaign adapter and track its experiments"
+    )
+    run_command.add_argument(
+        "research", type=Path, help="research objective in Markdown"
+    )
     run_command.add_argument("--ledger", type=Path, default=Path("experiments.jsonl"))
     run_command.add_argument("--max-runs", type=positive_int, default=6)
-    run_command.add_argument("--timeout", type=positive_float, default=3600.0, metavar="SECONDS")
-    run_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
-    run_command.add_argument("--plain", action="store_true", help="print events without a live display")
+    run_command.add_argument(
+        "--timeout", type=positive_float, default=3600.0, metavar="SECONDS"
+    )
+    run_command.add_argument(
+        "--maximize", action="store_true", help="higher metrics are better"
+    )
+    run_command.add_argument(
+        "--plain", action="store_true", help="print events without a live display"
+    )
 
     akash_command = commands.add_parser(
         "akash",
         help="run a Pomerium-protected Akash GPU worker",
     )
-    akash_command.add_argument("research", type=Path, help="research objective in Markdown")
+    akash_command.add_argument(
+        "research", type=Path, help="research objective in Markdown"
+    )
     akash_command.add_argument("--sdl", type=Path, default=Path("deploy/akash.yaml"))
     akash_command.add_argument("--ledger", type=Path, default=Path("experiments.jsonl"))
     akash_command.add_argument("--max-runs", type=positive_int, default=3)
-    akash_command.add_argument("--timeout", type=positive_float, default=600.0, metavar="SECONDS")
-    akash_command.add_argument("--deposit", type=positive_float, default=0.5, metavar="USD")
-    akash_command.add_argument("--max-bid", type=positive_float, default=1000.0, metavar="UACT")
-    akash_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
-    akash_command.add_argument("--plain", action="store_true", help="print events without a live display")
+    akash_command.add_argument(
+        "--timeout", type=positive_float, default=600.0, metavar="SECONDS"
+    )
+    akash_command.add_argument(
+        "--deposit", type=positive_float, default=0.5, metavar="USD"
+    )
+    akash_command.add_argument(
+        "--max-bid", type=positive_float, default=1000.0, metavar="UACT"
+    )
+    akash_command.add_argument(
+        "--maximize", action="store_true", help="higher metrics are better"
+    )
+    akash_command.add_argument(
+        "--plain", action="store_true", help="print events without a live display"
+    )
     akash_command.add_argument(
         "--yes",
         action="store_true",
@@ -221,13 +247,23 @@ def parser() -> argparse.ArgumentParser:
         "research",
         help="let Codex improve a complete training program on an Akash GPU",
     )
-    research_command.add_argument("research", type=Path, help="research objective in Markdown")
-    research_command.add_argument("--candidate", type=Path, default=Path("examples/code_candidate"))
-    research_command.add_argument("--workspace", type=Path, default=Path(".omr/autoresearch"))
+    research_command.add_argument(
+        "research", type=Path, help="research objective in Markdown"
+    )
+    research_command.add_argument(
+        "--candidate", type=Path, default=Path("examples/code_candidate")
+    )
+    research_command.add_argument(
+        "--workspace", type=Path, default=Path(".omr/autoresearch")
+    )
     research_command.add_argument("--sdl", type=Path, default=Path("deploy/akash.yaml"))
-    research_command.add_argument("--ledger", type=Path, default=Path("experiments.jsonl"))
+    research_command.add_argument(
+        "--ledger", type=Path, default=Path("experiments.jsonl")
+    )
     research_command.add_argument("--max-runs", type=positive_int, default=3)
-    research_command.add_argument("--timeout", type=positive_float, default=900.0, metavar="SECONDS")
+    research_command.add_argument(
+        "--timeout", type=positive_float, default=900.0, metavar="SECONDS"
+    )
     research_command.add_argument(
         "--codex-timeout",
         type=positive_float,
@@ -240,11 +276,19 @@ def parser() -> argparse.ArgumentParser:
         default=3,
         help="maximum Codex edit turns before each GPU evaluation",
     )
-    research_command.add_argument("--deposit", type=positive_float, default=0.5, metavar="USD")
-    research_command.add_argument("--max-bid", type=positive_float, default=1000.0, metavar="UACT")
+    research_command.add_argument(
+        "--deposit", type=positive_float, default=0.5, metavar="USD"
+    )
+    research_command.add_argument(
+        "--max-bid", type=positive_float, default=1000.0, metavar="UACT"
+    )
     research_command.add_argument("--model", help="optional Codex model override")
-    research_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
-    research_command.add_argument("--plain", action="store_true", help="print events without a live display")
+    research_command.add_argument(
+        "--maximize", action="store_true", help="higher metrics are better"
+    )
+    research_command.add_argument(
+        "--plain", action="store_true", help="print events without a live display"
+    )
     research_command.add_argument(
         "--yes",
         action="store_true",
@@ -255,18 +299,28 @@ def parser() -> argparse.ArgumentParser:
         evaluator=CODE_EVALUATOR,
     )
 
-    status_command = commands.add_parser("status", help="show a saved experiment ledger")
-    status_command.add_argument("ledger", type=Path, nargs="?", default=Path("experiments.jsonl"))
-    status_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
+    status_command = commands.add_parser(
+        "status", help="show a saved experiment ledger"
+    )
+    status_command.add_argument(
+        "ledger", type=Path, nargs="?", default=Path("experiments.jsonl")
+    )
+    status_command.add_argument(
+        "--maximize", action="store_true", help="higher metrics are better"
+    )
 
-    setup_command = commands.add_parser("setup", help="securely configure Codex and Akash credentials")
+    setup_command = commands.add_parser(
+        "setup", help="securely configure Codex and Akash credentials"
+    )
     setup_command.add_argument(
         "--from-env",
         action="store_true",
         help="import CODEX_API_KEY and AKASH_API_KEY from this process",
     )
 
-    commands.add_parser("doctor", help="check Codex and Akash prerequisites without printing secrets")
+    commands.add_parser(
+        "doctor", help="check Codex and Akash prerequisites without printing secrets"
+    )
     return root
 
 
@@ -274,7 +328,9 @@ def setup(args: argparse.Namespace) -> int:
     from one_more_run.settings import configure
 
     location = configure(args.from_env)
-    Console().print(f"Credentials saved to [cyan]{location}[/cyan] with user-only permissions")
+    Console().print(
+        f"Credentials saved to [cyan]{location}[/cyan] with user-only permissions"
+    )
     return 0
 
 
@@ -299,7 +355,9 @@ def doctor() -> int:
         "Akash credential": secret("AKASH_API_KEY") is not None,
     }
     for label, ready in checks.items():
-        console.print(f"{'[green]ready[/green]' if ready else '[red]missing[/red]'}  {label}")
+        console.print(
+            f"{'[green]ready[/green]' if ready else '[red]missing[/red]'}  {label}"
+        )
     return 0 if all(checks.values()) else 1
 
 
@@ -372,7 +430,9 @@ def consume(
     deadline = time.monotonic() + timeout
     console = Console()
 
-    live = None if plain else Live(render(campaign), console=console, refresh_per_second=8)
+    live = (
+        None if plain else Live(render(campaign), console=console, refresh_per_second=8)
+    )
     if live:
         live.start(refresh=True)
 
@@ -468,7 +528,9 @@ def warning(message: str) -> None:
 
 def status(args: argparse.Namespace) -> int:
     records = load(args.ledger)
-    campaign = Campaign(goal=f"Ledger: {args.ledger}", maximize=args.maximize, status="saved")
+    campaign = Campaign(
+        goal=f"Ledger: {args.ledger}", maximize=args.maximize, status="saved"
+    )
     campaign.experiments.extend(records)
     if records:
         campaign.provider = records[-1].provider
@@ -498,7 +560,9 @@ def parse_event(line: str) -> dict[str, Any]:
     try:
         event = json.loads(line)
     except json.JSONDecodeError as error:
-        raise ProtocolError(f"adapter emitted non-JSON output: {line.rstrip()}") from error
+        raise ProtocolError(
+            f"adapter emitted non-JSON output: {line.rstrip()}"
+        ) from error
     if not isinstance(event, dict):
         raise ProtocolError("adapter events must be JSON objects")
     return event
@@ -530,7 +594,12 @@ def render(campaign: Campaign) -> Group:
     title = Text("ONE MORE RUN", style="bold cyan")
     title.append(f"  {campaign.status}", style="dim")
     goal = campaign.goal.splitlines()[0].lstrip("# ") if campaign.goal else ""
-    header = Panel(Text(goal), title=title, subtitle=f"compute: {campaign.provider}", border_style="cyan")
+    header = Panel(
+        Text(goal),
+        title=title,
+        subtitle=f"compute: {campaign.provider}",
+        border_style="cyan",
+    )
 
     table = Table(expand=True)
     table.add_column("RUN", justify="right", width=4)
@@ -554,7 +623,11 @@ def render(campaign: Campaign) -> Group:
         )
 
     if campaign.current_plan is not None:
-        metric = "waiting" if campaign.current_metric is None else f"metric {campaign.current_metric:.6f}"
+        metric = (
+            "waiting"
+            if campaign.current_metric is None
+            else f"metric {campaign.current_metric:.6f}"
+        )
         plan = campaign.current_plan
         current = Panel(
             plan.hypothesis,
@@ -599,7 +672,9 @@ def int_field(event: dict[str, Any], name: str) -> int:
     return value
 
 
-def number_field(event: dict[str, Any], name: str, default: float | None = None) -> float:
+def number_field(
+    event: dict[str, Any], name: str, default: float | None = None
+) -> float:
     value = event.get(name, default)
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise ProtocolError(f"{name} must be a number")

@@ -132,14 +132,16 @@ def test_verified_experiment_becomes_idempotent_hindsight_memory():
     retain_memory(Memory(), campaign, experiment, "campaign")
 
     content, document_id, metadata, context = calls[0]
-    assert "Candidate: {\"learning_rate\":0.1,\"momentum\":0.0,\"steps\":80}" in content
+    assert 'Candidate: {"learning_rate":0.1,"momentum":0.0,"steps":80}' in content
     assert "metric 0.9; lower is better; decision keep" in content
     assert document_id == f"omr-campaign-1-{candidate_sha256}"
     assert metadata["candidate_sha256"] == candidate_sha256
     assert context == "One More Run: Minimize loss"
 
 
-def test_run_recalls_memory_without_forwarding_hindsight_credentials(monkeypatch, tmp_path):
+def test_run_recalls_memory_without_forwarding_hindsight_credentials(
+    monkeypatch, tmp_path
+):
     research = tmp_path / "research.md"
     research.write_text("Minimize loss")
     captured = {}

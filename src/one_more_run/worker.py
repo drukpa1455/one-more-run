@@ -166,7 +166,12 @@ def evaluate_code(files: dict[str, str]) -> dict[str, Any]:
             candidate.parent.mkdir(parents=True, exist_ok=True)
             candidate.write_text(source)
         process = subprocess.Popen(
-            [sys.executable, str(Path(__file__).with_name("code_runner.py")), str(root), str(result)],
+            [
+                sys.executable,
+                str(Path(__file__).with_name("code_runner.py")),
+                str(root),
+                str(result),
+            ],
             cwd=root,
             env=evaluator_environment(),
             stdout=subprocess.DEVNULL,
@@ -186,13 +191,25 @@ def evaluate_code(files: dict[str, str]) -> dict[str, Any]:
         if process.returncode or not result.is_file():
             return {"metric": None, "seconds": seconds, "error": "candidate crashed"}
         if result.stat().st_size > 16_384:
-            return {"metric": None, "seconds": seconds, "error": "candidate result was oversized"}
+            return {
+                "metric": None,
+                "seconds": seconds,
+                "error": "candidate result was oversized",
+            }
         try:
             value = json.loads(result.read_text())
         except (OSError, json.JSONDecodeError):
-            return {"metric": None, "seconds": seconds, "error": "candidate returned invalid JSON"}
+            return {
+                "metric": None,
+                "seconds": seconds,
+                "error": "candidate returned invalid JSON",
+            }
         if not isinstance(value, dict):
-            return {"metric": None, "seconds": seconds, "error": "candidate returned invalid result"}
+            return {
+                "metric": None,
+                "seconds": seconds,
+                "error": "candidate returned invalid result",
+            }
         value["seconds"] = seconds
         return value
 
