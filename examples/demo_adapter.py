@@ -1,51 +1,46 @@
-"""Deterministic adapter used to exercise the CLI without a GPU."""
+"""Run the adaptive search against the fixed evaluator in this process."""
 
 import json
 import os
-import time
 
+from one_more_run.akash_adapter import CoordinateSearch
 from one_more_run.protocol import identify_candidate
-
-
-HYPOTHESES = [
-    ("baseline", 1.0412),
-    ("increase learning rate", 1.0298),
-    ("replace activation with GELU", 1.0341),
-    ("tie input and output embeddings", 1.0217),
-    ("deepen the model", 1.0264),
-    ("reduce weight decay", 1.0189),
-]
+from one_more_run.worker import EVALUATOR, device_info, run_experiment
 
 
 def emit(event: dict) -> None:
     print(json.dumps(event), flush=True)
 
 
-emit({"type": "campaign.started", "provider": "local demo"})
-for run, (hypothesis, metric) in enumerate(HYPOTHESES[: int(os.environ["OMR_MAX_RUNS"])], start=1):
-    candidate, candidate_sha256 = identify_candidate({"change": hypothesis})
-    evaluator = "demo.v1"
+device = device_info()
+provider = f"local · {device['gpu'] or device['device']}"
+emit({"type": "campaign.started", "provider": provider})
+search = CoordinateSearch(os.environ.get("OMR_MAXIMIZE", "0") == "1")
+for run in range(1, int(os.environ["OMR_MAX_RUNS"]) + 1):
+    hypothesis, candidate = search.propose()
+    _, candidate_sha256 = identify_candidate(candidate)
     emit(
         {
             "type": "experiment.started",
             "run": run,
             "hypothesis": hypothesis,
             "candidate": candidate,
-            "evaluator": evaluator,
+            "evaluator": EVALUATOR,
         }
     )
-    time.sleep(0.2)
-    emit({"type": "experiment.progress", "run": run, "metric": metric + 0.08})
-    time.sleep(0.2)
+    result = run_experiment(candidate)
+    assert result["candidate_sha256"] == candidate_sha256
+    assert result["evaluator"] == EVALUATOR
+    search.observe(result["metric"])
     emit(
         {
             "type": "experiment.finished",
             "run": run,
-            "metric": metric,
-            "seconds": 300.0,
-            "cost_usd": 0.17,
-            "candidate_sha256": candidate_sha256,
-            "evaluator": evaluator,
+            "metric": result["metric"],
+            "seconds": result["seconds"],
+            "cost_usd": 0.0,
+            "candidate_sha256": result["candidate_sha256"],
+            "evaluator": result["evaluator"],
         }
     )
 emit({"type": "campaign.finished"})

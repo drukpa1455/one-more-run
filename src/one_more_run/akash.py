@@ -17,11 +17,14 @@ from typing import Any
 
 from rich.console import Console
 
+from one_more_run.protocol import NUMERIC_EVALUATOR
+from one_more_run.settings import secret
+
 
 API_URL = "https://console-api.akash.network"
 MIN_DEPOSIT_USD = 0.5
 POLL_SECONDS = 3.0
-EVALUATOR = "smoke.linear-regression.v1"
+EVALUATOR = NUMERIC_EVALUATOR
 
 
 class AkashError(ValueError):
@@ -59,9 +62,15 @@ def run(args: argparse.Namespace, run_campaign: Callable[[argparse.Namespace], i
         raise AkashError(f"research objective not found: {args.research}")
     if args.ledger.exists():
         raise AkashError(f"ledger already exists: {args.ledger}")
-    api_key = os.environ.get("AKASH_API_KEY")
+    for required_file in getattr(args, "required_files", ()):
+        if not required_file.exists():
+            raise AkashError(f"required path not found: {required_file}")
+    workspace = getattr(args, "workspace", None)
+    if workspace is not None and workspace.exists():
+        raise AkashError(f"campaign workspace already exists: {workspace}")
+    api_key = secret("AKASH_API_KEY")
     if not api_key:
-        raise AkashError("set AKASH_API_KEY in the environment")
+        raise AkashError("run `omr setup` or set AKASH_API_KEY")
     if not args.sdl.is_file():
         raise AkashError(f"Akash SDL not found: {args.sdl}")
 
@@ -95,15 +104,25 @@ def orchestrate(
             f"from {bid.provider}"
         )
         client.lease(deployment, bid)
-        worker_url = wait_for_worker(client, bid, deadline)
+        worker_url = wait_for_worker(
+            client,
+            bid,
+            deadline,
+            getattr(args, "evaluator", EVALUATOR),
+        )
         console.print(f"Worker ready at [cyan]{worker_url}[/cyan]")
 
         campaign_args = argparse.Namespace(**vars(args))
-        campaign_args.adapter = [sys.executable, "-m", "one_more_run.akash_adapter"]
+        campaign_args.adapter = [
+            sys.executable,
+            "-m",
+            getattr(args, "adapter_module", "one_more_run.akash_adapter"),
+        ]
         campaign_args.environment = {
             "OMR_WORKER_URL": worker_url,
             "OMR_WORKER_TOKEN": worker_token,
             "OMR_BID_UACT": str(bid.amount),
+            **getattr(args, "adapter_environment", {}),
         }
         campaign_args.drop_environment = ["AKASH_API_KEY"]
         campaign_args.timeout = remaining(deadline, "campaign")
@@ -222,13 +241,24 @@ def wait_for_bid(client: ConsoleAPI, dseq: str, max_bid: Decimal, deadline: floa
         pause(deadline, "an eligible bid")
 
 
-def wait_for_worker(client: ConsoleAPI, bid: Bid, deadline: float) -> str:
+def wait_for_worker(
+    client: ConsoleAPI,
+    bid: Bid,
+    deadline: float,
+    evaluator: str = EVALUATOR,
+) -> str:
     while True:
         uri = worker_uri(client.deployment(bid.dseq), bid)
         if uri:
             health = worker_health(uri, deadline)
             if health is not None:
-                if health.get("evaluator") != EVALUATOR:
+                evaluators = health.get("evaluators")
+                supported = (
+                    evaluator in evaluators
+                    if isinstance(evaluators, list)
+                    else health.get("evaluator") == evaluator
+                )
+                if not supported:
                     raise AkashError("worker reported an unexpected evaluator")
                 if health.get("device") != "cuda":
                     raise AkashError("Akash worker has no CUDA device")

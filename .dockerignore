@@ -5,3 +5,4 @@
 !src/one_more_run/__init__.py
 !src/one_more_run/protocol.py
 !src/one_more_run/worker.py
+!src/one_more_run/code_runner.py
