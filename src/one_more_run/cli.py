@@ -164,7 +164,10 @@ def parser() -> argparse.ArgumentParser:
     run_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
     run_command.add_argument("--plain", action="store_true", help="print events without a live display")
 
-    akash_command = commands.add_parser("akash", help="deploy, run, and close an Akash GPU worker")
+    akash_command = commands.add_parser(
+        "akash",
+        help="run a Pomerium-protected Akash GPU worker",
+    )
     akash_command.add_argument("research", type=Path, help="research objective in Markdown")
     akash_command.add_argument("--sdl", type=Path, default=Path("deploy/akash.yaml"))
     akash_command.add_argument("--ledger", type=Path, default=Path("experiments.jsonl"))
@@ -174,7 +177,11 @@ def parser() -> argparse.ArgumentParser:
     akash_command.add_argument("--max-bid", type=positive_float, default=1000.0, metavar="UACT")
     akash_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
     akash_command.add_argument("--plain", action="store_true", help="print events without a live display")
-    akash_command.add_argument("--yes", action="store_true", help="authorize the displayed spend limits")
+    akash_command.add_argument(
+        "--yes",
+        action="store_true",
+        help="authorize the displayed spend and route mutation",
+    )
 
     status_command = commands.add_parser("status", help="show a saved experiment ledger")
     status_command.add_argument("ledger", type=Path, nargs="?", default=Path("experiments.jsonl"))

@@ -64,13 +64,35 @@ current measured champion. An improvement advances the champion; a regression
 reverses that coordinate before the search moves on. The authenticated evaluator
 and workload stay fixed; only the bounded candidate crosses the boundary.
 
-The `autoresearch` submodule supplies the initial research workload.
+The `autoresearch` submodule supplies the initial research workload. The
+`pomerium` submodule pins the Apache-2.0 Pomerium source used by the deployment.
 
 ## Run on Akash
 
-The end user supplies one Console API credential. The agent-driven CLI owns the
-rest of the deployment lifecycle. Load `AKASH_API_KEY` from a secret manager,
-then run:
+The Akash worker is not public. A Pomerium Zero replica receives the deployment's
+only public IP and proxies authorized requests to `http://worker:8080` over the
+private Akash service network.
+
+Create a standard Pomerium Zero cluster once, then configure:
+
+1. A route from `https://worker.<cluster>.pomerium.app` to
+   `http://worker:8080`.
+2. A service account and a policy that allows its User ID on that route.
+3. An API User token so the runner can point the cluster at each ephemeral Akash
+   IP and restore the previous override during cleanup.
+
+The route must use the cluster's starter domain so the runner can identify its
+owner. Load all credentials from a secret manager:
+
+```bash
+export AKASH_API_KEY=...
+export POMERIUM_ZERO_TOKEN=...
+export POMERIUM_ZERO_API_TOKEN=...
+export POMERIUM_ROUTE_URL=https://worker.<cluster>.pomerium.app
+export POMERIUM_SERVICE_ACCOUNT_JWT=...
+```
+
+Then run:
 
 ```bash
 uv run omr akash research.md --yes
@@ -79,30 +101,37 @@ uv run omr akash research.md --yes
 By default, `omr akash` deposits `$0.50`, accepts only an open bid at or below
 `1000 uact` per block, waits for a CUDA worker, runs three experiments, and
 closes the deployment. Bidding, startup, and research share a ten-minute
-deadline; cleanup gets one final bounded 30-second request. The CLI generates
-the worker token locally and injects it only into the in-memory manifest, so no
-one has to open provider logs. The Console key is not passed to the adapter or
-remote worker. The deployment is closed in cleanup even when bidding, startup,
-or research fails.
+deadline; cleanup calls are bounded to 30 seconds. The CLI generates
+the worker token locally and injects it, together with the Zero cluster token,
+only into the in-memory manifest sent to Akash. The Akash Console key, Pomerium
+API User token, and Pomerium service-account JWT are never sent to the remote
+worker. Pomerium consumes the service-account header while the worker verifies
+its separate bearer token. Cleanup closes the deployment and restores the
+cluster's previous override IP even when research fails.
 
 `--yes` is the explicit authorization boundary for the displayed deposit, bid,
-and time limits. Keep `AKASH_API_KEY` in a secret manager, never commit it, and
-rotate it after a temporary test. Console API keys grant full account access.
-See the [Managed Wallet API documentation](https://akash.network/docs/api-documentation/console-api/getting-started/).
+time limits, and temporary Pomerium route mutation. Never commit any credential.
+Akash providers necessarily receive manifest environment variables, so rotate
+the worker and Zero cluster tokens after a temporary test. Console API keys and
+Pomerium API User tokens can mutate their respective accounts. See the
+[Akash Managed Wallet API](https://akash.network/docs/api-documentation/console-api/getting-started/),
+[Pomerium Zero API](https://www.pomerium.com/docs/internals/management-api-zero),
+and [Pomerium service-account](https://www.pomerium.com/docs/capabilities/service-accounts)
+documentation.
 
 The current worker accepts exactly three bounded numeric parameters; it cannot
 execute submitted code. It serializes experiments, rejects oversized requests,
 and returns a receipt identifying the normalized candidate and fixed evaluator.
-Editable source evaluation and Pomerium protection are subsequent milestones,
-not current behavior. The SDL accepts several trial-eligible NVIDIA models.
+Editable source evaluation remains a subsequent milestone. The SDL accepts
+several trial-eligible NVIDIA models and providers that offer an IP lease.
 
-The worker image is published to GHCR from pinned GitHub Actions, and the Akash
-SDL pins its immutable OCI digest.
+The worker and Pomerium images use immutable OCI digests. The Pomerium submodule
+is pinned to v0.32.7, matching the deployed image source.
 
 ## Hackathon target
 
 - Adaptive AutoML search driven by the previous measured result.
-- Authenticated Akash GPU evaluator with a fixed workload.
+- Pomerium Zero service identity in front of a private Akash GPU evaluator.
 - Fixed evaluation and bounded runs, time, and spend.
 - Live results with hypotheses, metrics, decisions, duration, and cost.
 - A content-addressed winning candidate and replayable `experiments.jsonl`.
