@@ -3,6 +3,14 @@
 Record evidence from a completed campaign. Do not spend the presentation
 waiting for marketplace bidding or image startup.
 
+## Verified result
+
+The repository includes a [real three-run Akash campaign](../demo/README.md).
+Run 2 reduced MSE from `0.854451` to `0.002781` with a standard neural training
+program. Run 3 reached `3.0408e-15` after Codex inspected the public evaluator
+source and synthesized an exact feature basis. Say that distinction plainly;
+validation rows stayed held out, but run 3 was not blind function discovery.
+
 ## Before recording
 
 ```bash
@@ -50,7 +58,9 @@ metric, and `KEEP`/`REJECT`/`CRASH`.
 > This is a real Akash campaign. The first row is the baseline. Every later row
 > is code Codex chose after observing prior measurements. The worker returns the
 > exact source hash and fixed evaluator identity. One More Run verifies both,
-> records the receipt, and keeps only a measured improvement.
+> records the receipt, and keeps only a measured improvement. Run 2 gives us a
+> 99.67% MSE reduction with a general neural candidate. Run 3 shows whole-program
+> synthesis against a public evaluator, which we disclose separately.
 
 ### 1:45–2:20 — Trust and bounds
 
