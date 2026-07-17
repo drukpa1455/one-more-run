@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -165,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_on_akash(args, run)
         if args.command_name == "status":
             return status(args)
+        if args.command_name == "replay":
+            return replay(args)
         if args.command_name == "setup":
             return setup(args)
         if args.command_name == "doctor":
@@ -250,6 +253,24 @@ def parser() -> argparse.ArgumentParser:
     status_command = commands.add_parser("status", help="show a saved experiment ledger")
     status_command.add_argument("ledger", type=Path, nargs="?", default=Path("experiments.jsonl"))
     status_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
+
+    replay_command = commands.add_parser(
+        "replay",
+        help="replay a verified campaign at presentation pace",
+    )
+    replay_command.add_argument(
+        "ledger", type=Path, nargs="?", default=Path("experiments.jsonl")
+    )
+    replay_command.add_argument(
+        "--seconds",
+        type=positive_float,
+        default=165.0,
+        metavar="SECONDS",
+        help="total replay time (default: 165)",
+    )
+    replay_command.add_argument(
+        "--maximize", action="store_true", help="higher metrics are better"
+    )
 
     setup_command = commands.add_parser("setup", help="securely configure Codex and Akash credentials")
     setup_command.add_argument(
@@ -418,6 +439,206 @@ def status(args: argparse.Namespace) -> int:
         campaign.provider = records[-1].provider
     Console().print(render(campaign))
     return 0
+
+
+def replay(args: argparse.Namespace) -> int:
+    records = load(args.ledger)
+    if not records:
+        raise ValueError("ledger contains no experiments")
+
+    campaign = Campaign(
+        goal=f"Verified ledger: {args.ledger}",
+        maximize=args.maximize,
+        provider=records[-1].provider,
+    )
+    changes: dict[str, str] = {}
+    previous: dict[str, Any] | None = None
+    for experiment in records:
+        changes[experiment.plan.candidate_sha256] = describe_candidate_change(
+            previous, experiment.plan.candidate
+        )
+        previous = experiment.plan.candidate
+
+    total = args.seconds
+    reveal_total = total * 0.9
+    segment = reveal_total / len(records)
+    elapsed = 0.0
+    console = Console()
+    first = records[0]
+
+    with Live(
+        replay_render(campaign, first, changes, False, 0.0),
+        console=console,
+        refresh_per_second=8,
+    ) as live:
+        for experiment in records:
+            proposal_seconds = segment * 0.58
+            replay_hold(
+                live,
+                proposal_seconds,
+                lambda fraction, experiment=experiment, elapsed=elapsed: replay_render(
+                    campaign,
+                    experiment,
+                    changes,
+                    False,
+                    (elapsed + proposal_seconds * fraction) / total,
+                ),
+            )
+            elapsed += proposal_seconds
+            campaign.experiments.append(experiment)
+
+            receipt_seconds = segment - proposal_seconds
+            replay_hold(
+                live,
+                receipt_seconds,
+                lambda fraction, experiment=experiment, elapsed=elapsed: replay_render(
+                    campaign,
+                    experiment,
+                    changes,
+                    True,
+                    (elapsed + receipt_seconds * fraction) / total,
+                ),
+            )
+            elapsed += receipt_seconds
+
+        replay_hold(
+            live,
+            total - elapsed,
+            lambda fraction: replay_render(
+                campaign,
+                None,
+                changes,
+                True,
+                (elapsed + (total - elapsed) * fraction) / total,
+            ),
+        )
+    return 0
+
+
+def replay_hold(
+    live: Live,
+    seconds: float,
+    view: Callable[[float], Group],
+) -> None:
+    started = time.monotonic()
+    while True:
+        elapsed = time.monotonic() - started
+        fraction = min(elapsed / seconds, 1.0)
+        live.update(view(fraction), refresh=True)
+        if fraction == 1.0:
+            return
+        time.sleep(min(0.25, seconds - elapsed))
+
+
+def replay_render(
+    campaign: Campaign,
+    current: Experiment | None,
+    changes: dict[str, str],
+    revealed: bool,
+    progress: float,
+) -> Group:
+    title = Text("ONE MORE RUN  VERIFIED REPLAY", style="bold cyan")
+    title.append("  no compute is running", style="dim")
+    header = Panel(
+        Text(campaign.goal),
+        title=title,
+        subtitle=f"measured on: {campaign.provider}",
+        border_style="cyan",
+    )
+
+    table = Table(expand=True)
+    table.add_column("RUN", justify="right", width=4)
+    table.add_column("SOURCE", width=10)
+    table.add_column("PROGRAM CHANGE", ratio=1)
+    table.add_column("METRIC", justify="right", width=10)
+    table.add_column("DECISION", width=9)
+    table.add_column("TIME", justify="right", width=8)
+    for experiment in campaign.experiments:
+        style = "green" if experiment.decision == "keep" else "red"
+        table.add_row(
+            str(experiment.plan.run),
+            experiment.plan.candidate_sha256[:8],
+            changes[experiment.plan.candidate_sha256],
+            format_metric(experiment.metric),
+            Text(experiment.decision, style=style),
+            f"{experiment.seconds:.1f}s",
+        )
+    if current is not None and not revealed:
+        table.add_row(
+            str(current.plan.run),
+            current.plan.candidate_sha256[:8],
+            changes[current.plan.candidate_sha256],
+            Text("pending", style="yellow"),
+            Text("measure", style="yellow"),
+            "—",
+        )
+
+    if current is None:
+        best = campaign.best
+        assert best is not None
+        detail = Text(
+            f"Best verified result: run {best.plan.run} · {format_metric(best.metric)}\n"
+            "Every row above comes from the checked-in, content-addressed ledger."
+        )
+        detail_title = "CAMPAIGN COMPLETE"
+    else:
+        detail = Text()
+        detail.append(f"Hypothesis: {current.plan.hypothesis}\n")
+        detail.append(
+            f"Candidate: #{current.plan.candidate_sha256[:8]} · "
+            f"{changes[current.plan.candidate_sha256]}\n",
+            style="cyan",
+        )
+        if revealed:
+            detail.append(
+                f"Receipt: {format_metric(current.metric)} · {current.decision} · "
+                f"{current.seconds:.1f}s · {current.plan.evaluator}",
+                style="green" if current.decision == "keep" else "red",
+            )
+            detail_title = f"RUN {current.plan.run} · VERIFIED RECEIPT"
+        else:
+            detail.append(
+                f"Fixed evaluator: {current.plan.evaluator}",
+                style="yellow",
+            )
+            detail_title = f"RUN {current.plan.run} · CANDIDATE READY"
+
+    width = 32
+    complete = min(int(progress * width), width)
+    bar = Text("█" * complete, style="cyan")
+    bar.append("░" * (width - complete), style="dim")
+    bar.append(f"  {progress:>6.1%}  ·  replay only", style="dim")
+    return Group(header, table, Panel(detail, title=detail_title), bar)
+
+
+def describe_candidate_change(
+    previous: dict[str, Any] | None,
+    candidate: dict[str, Any],
+) -> str:
+    files = candidate.get("files")
+    previous_files = None if previous is None else previous.get("files")
+    if isinstance(files, dict):
+        if not isinstance(previous_files, dict):
+            return f"baseline · {len(files)} Python files"
+        names = sorted(set(previous_files) | set(files))
+        changed = []
+        for name in names:
+            if name not in previous_files:
+                changed.append(f"+{name}")
+            elif name not in files:
+                changed.append(f"-{name}")
+            elif previous_files[name] != files[name]:
+                changed.append(f"~{name}")
+        return " · ".join(changed) or "unchanged"
+
+    if previous is None:
+        return "baseline"
+    changed = [
+        f"{name} {previous.get(name)}→{candidate.get(name)}"
+        for name in sorted(set(previous) | set(candidate))
+        if previous.get(name) != candidate.get(name)
+    ]
+    return " · ".join(changed) or "unchanged"
 
 
 def read_lines(process: subprocess.Popen[str], lines: queue.Queue[str | None]) -> None:

@@ -11,6 +11,23 @@ program. Run 3 reached `3.0408e-15` after Codex inspected the public evaluator
 source and synthesized an exact feature basis. Say that distinction plainly;
 validation rows stayed held out, but run 3 was not blind function discovery.
 
+## Live terminal replay
+
+```bash
+uv run omr replay demo/experiments.jsonl --seconds 165
+```
+
+This is the preferred live presentation. It replays the exact checked-in
+receipts over 2:45 and is permanently labeled as a replay with no active
+compute. Each run gets about 50 seconds: candidate and hypothesis first, then
+the measured receipt. The last 16 seconds hold the complete campaign table.
+
+- 0:00–0:50: establish the fixed baseline and receipt identity.
+- 0:50–1:39: explain the run 2 neural program and 99.67% MSE reduction.
+- 1:39–2:29: show whole-program replacement; disclose the public evaluator
+  source used by run 3.
+- 2:29–2:45: close on the verified ledger and automatic cleanup.
+
 ## Before recording
 
 ```bash
