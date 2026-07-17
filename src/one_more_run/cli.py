@@ -25,6 +25,7 @@ from one_more_run.hindsight import (
     ENVIRONMENT as HINDSIGHT_ENVIRONMENT,
     Hindsight,
     HindsightError,
+    MAX_MEMORY_CHARS,
     from_environment as hindsight_from_environment,
 )
 from one_more_run.protocol import (
@@ -500,13 +501,13 @@ def retain_memory(
     candidate = json.dumps(plan.candidate, separators=(",", ":"), sort_keys=True)
     content = "\n".join(
         (
-            f"Research objective: {campaign.goal}",
             f"Hypothesis: {plan.hypothesis}",
-            f"Candidate: {candidate}",
-            f"Evaluator: {plan.evaluator}",
             f"Result: metric {metric}; {direction} is better; decision {experiment.decision}.",
+            f"Evaluator: {plan.evaluator}",
+            f"Candidate: {candidate}",
+            f"Research objective: {campaign.goal}",
         )
-    )
+    )[:MAX_MEMORY_CHARS]
     document_id = f"omr-{campaign_id[:16]}-{plan.run}-{plan.candidate_sha256}"
     metadata = {
         "source": "one-more-run",

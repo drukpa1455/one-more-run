@@ -15,6 +15,7 @@ from one_more_run.cli import (
     retain_memory,
     split_adapter,
 )
+from one_more_run.hindsight import MAX_MEMORY_CHARS
 from one_more_run.protocol import identify_candidate
 
 
@@ -137,6 +138,28 @@ def test_verified_experiment_becomes_idempotent_hindsight_memory():
     assert document_id == f"omr-campaign-1-{candidate_sha256}"
     assert metadata["candidate_sha256"] == candidate_sha256
     assert context == "One More Run: Minimize loss"
+
+
+def test_hindsight_memory_bounds_large_code_candidates():
+    calls = []
+
+    class Memory:
+        def retain(self, *args):
+            calls.append(args)
+
+    candidate, candidate_sha256 = identify_candidate(
+        {"files": {"train.py": "x" * (MAX_MEMORY_CHARS * 2)}}
+    )
+    plan = ExperimentPlan(
+        1, "try a larger model", candidate, candidate_sha256, EVALUATOR
+    )
+    experiment = Experiment(plan, 0.9, "keep", 3.0, 0.1, "test")
+
+    retain_memory(Memory(), Campaign("Minimize loss"), experiment, "campaign")
+
+    content = calls[0][0]
+    assert len(content) == MAX_MEMORY_CHARS
+    assert "metric 0.9; lower is better; decision keep" in content
 
 
 def test_run_recalls_memory_without_forwarding_hindsight_credentials(
