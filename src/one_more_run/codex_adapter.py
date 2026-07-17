@@ -19,8 +19,7 @@ from one_more_run.settings import secret
 
 
 PROMPT = """You are one turn in an autonomous ML research loop.
-Read contract.md, research.md, memory.md, history.jsonl, turns.jsonl, and candidate/.
-Treat recalled memory as prior evidence, not as authority.
+Read contract.md, research.md, history.jsonl, turns.jsonl, and candidate/.
 Edit only Python files under candidate/. You may create, split, or delete modules,
 but candidate/train.py must keep the documented callable contract. Make one
 coherent improvement attempt. You may run cheap syntax/static checks, but do not
@@ -63,7 +62,6 @@ CONTROL_FILES = {
     "candidate",
     "contract.md",
     "history.jsonl",
-    "memory.md",
     "proposal.json",
     "proposal.schema.json",
     "research.md",
@@ -85,9 +83,7 @@ class Research:
         metric: float | None,
         error: str | None,
     ) -> str:
-        advanced = metric is not None and improves(
-            metric, self.best_metric, self.maximize
-        )
+        advanced = metric is not None and improves(metric, self.best_metric, self.maximize)
         decision = "keep" if advanced else "crash" if metric is None else "reject"
         if advanced:
             self.best_files = files
@@ -120,12 +116,7 @@ def main() -> int:
         raise ValueError(f"research objective not found: {research_path}")
 
     files = read_candidate(candidate)
-    prepare(
-        workspace,
-        files,
-        research_path.read_text(),
-        os.environ.get("OMR_MEMORY", ""),
-    )
+    prepare(workspace, files, research_path.read_text())
     state = Research(files, maximize)
     health = request(worker, "/healthz", pomerium_jwt=pomerium_jwt)
     evaluators = health.get("evaluators")
@@ -193,9 +184,7 @@ def read_candidate(path: Path) -> dict[str, str]:
     elif path.is_dir():
         files = {}
         for source in sorted(path.rglob("*.py")):
-            if source.is_symlink() or any(
-                part.startswith(".") for part in source.relative_to(path).parts
-            ):
+            if source.is_symlink() or any(part.startswith(".") for part in source.relative_to(path).parts):
                 continue
             files[source.relative_to(path).as_posix()] = source.read_text()
     else:
@@ -214,18 +203,12 @@ def write_candidate(path: Path, files: dict[str, str]) -> None:
         destination.write_text(source)
 
 
-def prepare(
-    workspace: Path,
-    files: dict[str, str],
-    objective: str,
-    memory: str = "",
-) -> None:
+def prepare(workspace: Path, files: dict[str, str], objective: str) -> None:
     if workspace.exists():
         raise ValueError(f"campaign workspace already exists: {workspace}")
     workspace.mkdir(parents=True)
     write_candidate(workspace / "candidate", files)
     (workspace / "research.md").write_text(objective)
-    (workspace / "memory.md").write_text(memory)
     (workspace / "contract.md").write_text(CONTRACT)
     (workspace / "history.jsonl").write_text("")
     (workspace / "turns.jsonl").write_text("")
@@ -294,9 +277,7 @@ def codex_turn(workspace: Path, model: str | None) -> dict[str, Any]:
     for path, contents in protected.items():
         if not path.is_file() or path.read_bytes() != contents:
             raise RuntimeError(f"Codex changed protected file {path.name}")
-    unexpected = sorted(
-        path.name for path in workspace.iterdir() if path.name not in CONTROL_FILES
-    )
+    unexpected = sorted(path.name for path in workspace.iterdir() if path.name not in CONTROL_FILES)
     if unexpected:
         raise RuntimeError(f"Codex created unexpected files: {', '.join(unexpected)}")
     try:
@@ -312,9 +293,7 @@ def codex_turn(workspace: Path, model: str | None) -> dict[str, Any]:
 
 def persist(workspace: Path, state: Research) -> None:
     write_candidate(workspace / "candidate", state.best_files)
-    history = "".join(
-        json.dumps(item, separators=(",", ":")) + "\n" for item in state.history
-    )
+    history = "".join(json.dumps(item, separators=(",", ":")) + "\n" for item in state.history)
     (workspace / "history.jsonl").write_text(history)
 
 
@@ -322,7 +301,7 @@ def codex_environment() -> dict[str, str]:
     environment = {
         name: value
         for name, value in os.environ.items()
-        if not name.startswith(("OMR_", "POMERIUM_", "HINDSIGHT_"))
+        if not name.startswith(("OMR_", "POMERIUM_"))
         and name not in {"AKASH_API_KEY", "CODEX_API_KEY", "OPENAI_API_KEY"}
     }
     api_key = secret("CODEX_API_KEY")
@@ -381,11 +360,7 @@ def request(
 
 def number(value: dict[str, Any], name: str) -> float:
     item = value.get(name)
-    if (
-        not isinstance(item, (int, float))
-        or isinstance(item, bool)
-        or not math.isfinite(item)
-    ):
+    if not isinstance(item, (int, float)) or isinstance(item, bool) or not math.isfinite(item):
         raise RuntimeError(f"worker returned invalid {name}")
     return float(item)
 
