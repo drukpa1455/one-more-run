@@ -85,21 +85,27 @@ GPU receipts and their complete source bundles. Its general neural candidate
 reduced MSE from `0.854451` to `0.002781`, a 99.67% reduction. A later
 source-informed exact-basis result is preserved and disclosed separately.
 
-### Copy-paste presentation mode
+### Live terminal presentation
 
-Do not provision paid compute during the pitch. Paste this before speaking and
-leave the verified ledger on screen while walking through the visual material:
+Replay the real campaign over 2:45 while narrating it. The terminal reveals each
+actual candidate, source hash, program change, metric, decision, and evaluator
+receipt at presentation pace:
 
 ```bash
-uv run omr doctor && \
-uv run pytest -q && \
-uv run omr status demo/experiments.jsonl
+uv run omr replay demo/experiments.jsonl --seconds 165
 ```
 
-This checks the configured Codex and Akash boundary, runs the full test suite,
-and renders the real Akash receipts without network access or spend. To show a
-fresh loop instead, run the same controller against the deterministic local
-adapter:
+The header always says `VERIFIED REPLAY · no compute is running`. The progress
+bar represents presentation time only; every candidate and result comes from
+the checked-in real Akash ledger. The 2:45 replay leaves 15 seconds for the
+close. Before presenting, verify the environment once:
+
+```bash
+uv run omr doctor && uv run pytest -q
+```
+
+To show a fresh loop instead, run the same controller against the deterministic
+local adapter:
 
 ```bash
 DEMO_LEDGER="$(mktemp -d)/experiments.jsonl"

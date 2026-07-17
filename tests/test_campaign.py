@@ -130,6 +130,36 @@ def test_render_omits_unverified_costs():
     assert "COST" not in console.export_text()
 
 
+def test_describe_candidate_change_tracks_module_edits():
+    baseline = {"files": {"features.py": "old", "model.py": "old"}}
+    candidate = {"files": {"features.py": "new", "train.py": "new"}}
+
+    assert cli.describe_candidate_change(None, baseline) == "baseline · 2 Python files"
+    assert (
+        cli.describe_candidate_change(baseline, candidate)
+        == "~features.py · -model.py · +train.py"
+    )
+
+
+def test_replay_is_explicitly_labeled(tmp_path, monkeypatch, capsys):
+    candidate, candidate_sha256 = identify_candidate(CANDIDATE)
+    plan = ExperimentPlan(1, "baseline", candidate, candidate_sha256, EVALUATOR)
+    record = Experiment(plan, 1.0, "keep", 3.0, 0.1, "Akash")
+    ledger = tmp_path / "experiments.jsonl"
+    ledger.write_text(json.dumps(asdict(record)) + "\n")
+    monkeypatch.setattr(
+        cli,
+        "replay_hold",
+        lambda live, _seconds, view: live.update(view(1.0), refresh=True),
+    )
+
+    assert cli.main(["replay", str(ledger), "--seconds", "1"]) == 0
+
+    output = capsys.readouterr().out
+    assert "VERIFIED REPLAY" in output
+    assert "no compute is running" in output
+
+
 def test_doctor_checks_pomerium_only_when_requested(monkeypatch):
     monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setenv("CODEX_API_KEY", "codex-secret")
