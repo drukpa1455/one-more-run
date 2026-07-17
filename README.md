@@ -7,16 +7,17 @@ Codex rewrites a complete training program, an isolated Akash GPU worker
 evaluates it against hidden fixed data, and One More Run keeps only measured
 improvements.
 
-```text
-Codex: edit candidate/
-      │
-      ▼
-  One More Run ── experiment ledger ── live terminal
-      │
-      ▼
-Akash GPU: fixed evaluator
-      │
-      └─ metric + source/evaluator receipt
+```mermaid
+flowchart LR
+    U[omr research] -->|bounded turn| C[Codex]
+    C -->|edit or refactor| S[Candidate bundle]
+    S -->|source + SHA-256| W[Akash GPU worker]
+    W --> E[Fixed hidden evaluator]
+    E -->|metric + receipt| U
+    U -->|keep or revert| S
+    U --> L[(JSONL ledger)]
+    K[(User-only credentials)] -. scoped only .-> U
+    K -. Codex key only .-> C
 ```
 
 The core does not know how a GPU is provisioned. An adapter emits a tiny JSONL
@@ -58,6 +59,32 @@ or regression restores the previous bundle. The champion and history remain in
 Codex may split modules and change feature construction, architecture, loss,
 optimizer, schedule, and training algorithm. It cannot change the evaluator or
 hidden validation targets.
+
+## Three-minute demo
+
+Run the campaign before recording so the demo does not depend on marketplace
+startup time:
+
+```bash
+uv run omr research research.md \
+  --max-runs 3 \
+  --workspace .omr/demo \
+  --ledger demo/experiments.jsonl \
+  --yes
+```
+
+Then use the recording to show evidence rather than a spinner:
+
+```bash
+uv run omr doctor
+find examples/code_candidate -type f -maxdepth 2
+uv run omr status demo/experiments.jsonl
+```
+
+Suggested timing: 20 seconds for the problem and diagram, 30 seconds for the
+modular candidate and readiness loop, 60 seconds for the real Akash ledger and
+keep/revert decision, 30 seconds for credential and spend boundaries, and 40
+seconds for the product close and one-command rerun.
 
 ## Try the numeric loop locally
 
@@ -130,8 +157,8 @@ The worker supports both the original three-parameter smoke evaluator and the
 code evaluator. Code experiments run one at a time in a child process with a
 fixed hidden dataset, a hard timeout, a bounded source payload, and a scrubbed
 environment that excludes controller credentials and the worker bearer token.
-Every response binds the exact source hash to the evaluator identity. The SDL accepts several
-trial-eligible NVIDIA models.
+Every response binds the exact source hash to the evaluator identity. The SDL
+accepts several trial-eligible NVIDIA models.
 
 The worker image is published to GHCR from pinned GitHub Actions, and the Akash
 SDL pins its immutable OCI digest.

@@ -2,7 +2,7 @@ version: "2.0"
 
 services:
   worker:
-    image: ghcr.io/drukpa1455/one-more-run-worker@sha256:df4bcb8cc4bf5bd2c99821287354c46335797e0bc07768bdbe7c984db18fa296
+    image: ghcr.io/drukpa1455/one-more-run-worker@sha256:0f0f0369a0e7f86c46362ec33d750320cfd4f2cbdedddcde9ae00efc0f2db9d8
     expose:
       - port: 8080
         as: 80
