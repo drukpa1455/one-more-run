@@ -27,10 +27,10 @@ retains the hypothesis, candidate, metric, and decision across entities,
 relationships, and time. The next campaign can recall relevant wins and
 failures instead of rediscovering them.
 
-The evaluator is private. Pomerium Zero is the only public Akash service and
-enforces service identity before proxying to the worker. The worker still owns
-its separate bearer token. Identity at the edge; application auth at the
-service.
+Direct bearer-authenticated Akash is the proven default. In protected mode,
+Pomerium Zero is the only public Akash service and enforces service identity
+before proxying to the worker. The worker still owns its separate bearer token.
+Identity at the edge; application auth at the service.
 
 The interesting part is not that an agent can edit code. It is the system
 around the edit: readiness, measurement, receipts, memory, spend, identity, and
@@ -53,7 +53,7 @@ An agent can change the program. Only an experiment can change the champion.
 - Akash measures a content-addressed candidate against a fixed evaluator.
 - The controller accepts only `KEEP`, `REJECT`, or `CRASH` receipts.
 - Hindsight carries measured evidence across campaigns.
-- Pomerium Zero protects the private evaluator with service identity.
+- Optional Pomerium Zero protects the private evaluator with service identity.
 
 The result is an autonomous research loop that can improve, remember, and
 explain exactly why the champion changed.

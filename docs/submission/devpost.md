@@ -9,7 +9,7 @@ One More Run
 ### Elevator pitch
 
 Nested research loops where Codex evolves ML programs, Akash GPUs measure them,
-Hindsight carries evidence forward, and Pomerium Zero protects every evaluation.
+Hindsight carries evidence forward, and optional Pomerium Zero protects the evaluator.
 
 ### Thumbnail copy
 
@@ -51,11 +51,12 @@ bounded number of turns. Static checks run locally. Codex explicitly marks the
 candidate ready before any GPU time is spent.
 
 The outer loop is expensive and empirical. One More Run deploys a dedicated
-Akash GPU worker, sends the content-addressed source bundle through Pomerium
-Zero, and evaluates it against fixed held-out validation targets. The worker
-returns the candidate hash, evaluator identity, metric, duration, and any
-failure. The controller verifies that receipt and makes one of three decisions:
-`KEEP`, `REJECT`, or `CRASH`.
+Akash GPU worker and evaluates a content-addressed source bundle against fixed
+held-out validation targets. Direct bearer-authenticated Akash is the proven
+default; protected mode routes the same request through Pomerium Zero. The
+worker returns the candidate hash, evaluator identity, metric, duration, and
+any failure. The controller verifies that receipt and makes one of three
+decisions: `KEEP`, `REJECT`, or `CRASH`.
 
 Only a measured improvement becomes the next champion.
 
@@ -97,17 +98,19 @@ The mutable research agent and the fixed evaluator do not share authority.
   the champion.
 - Akash supplies ephemeral GPU compute through an immutable deployment
   manifest.
-- Pomerium Zero is the deployment's only public service. Its policy validates
-  the service-account identity before forwarding to the private worker.
+- In protected mode, Pomerium Zero is the deployment's only public service. Its
+  policy validates service-account identity before forwarding to the private
+  worker.
 - The worker separately verifies its bearer token, serializes experiments, and
   executes the candidate in a child process with a bounded payload, scrubbed
   environment, and hard timeout.
 - Pomerium consumes its identity header; the worker sees only the application
   credential it owns.
 
-Before spending, the controller verifies the exact Pomerium route, private
-upstream, and attached policy. Cleanup independently restores the prior Zero
-cluster IP and closes the Akash deployment, including on failure.
+Before spending in protected mode, the controller verifies the exact Pomerium
+route, private upstream, and attached policy. Cleanup independently restores
+the prior Zero cluster IP and closes the Akash deployment, including on
+failure.
 
 ```text
 LOCAL CONTROL PLANE                         AKASH DATA PLANE
@@ -227,8 +230,8 @@ Target 90–120 seconds:
 
 1. State the problem and thesis, 15 seconds.
 2. Show `omr research ... --yes` and the inner-loop readiness gate, 20 seconds.
-3. Show the Pomerium-protected Akash deployment and one outer measurement,
-   30 seconds.
+3. Show `--pomerium`, the protected Akash deployment, and one outer
+   measurement, 30 seconds.
 4. Show `KEEP`/`REJECT`, candidate/evaluator hashes, and the JSONL receipt,
    20 seconds.
 5. Start a second campaign and show relevant Hindsight recall, 20 seconds.
@@ -250,12 +253,12 @@ diagram; it is where the champion is decided.
 
 #### Pomerium
 
-Pomerium Zero is the identity boundary for the agentic runtime. The worker has
-no public route. A standard Zero cluster receives the Akash IP lease, enforces
-the route policy and service-account identity, and proxies only authorized
-requests to the private evaluator. One More Run preflights the route and policy
-before spend, separates Pomerium identity from worker bearer authentication,
-and restores the prior cluster IP during cleanup.
+In protected mode, Pomerium Zero is the identity boundary for the agentic
+runtime and the worker has no public route. A standard Zero cluster receives
+the Akash IP lease, enforces the route policy and service-account identity, and
+proxies only authorized requests to the private evaluator. One More Run
+preflights the route and policy before spend, separates Pomerium identity from
+worker bearer authentication, and restores the prior cluster IP during cleanup.
 
 ### Final submission checks
 

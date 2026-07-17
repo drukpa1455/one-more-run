@@ -7,12 +7,12 @@ the intended converged hackathon build:
 - an empirical outer GPU loop that keeps only measured improvements;
 - Hindsight graph-backed memory across campaigns;
 - Akash GPU execution;
-- Pomerium Zero identity-aware access; and
+- optional Pomerium Zero identity-aware access; and
 - a content-addressed JSONL evidence trail.
 
-Public copy is intentionally written in the optimistic final tense requested
-for the submission. It assumes the integration checklist in
-[`integration-review.md`](integration-review.md) is completed before judging.
+Public copy describes the converged build while distinguishing the proven
+direct Akash path from optional Pomerium and Hindsight modes. Remaining
+operator-only checks live in [`integration-review.md`](integration-review.md).
 
 ## Files
 

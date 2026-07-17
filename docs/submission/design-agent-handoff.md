@@ -10,25 +10,29 @@ and exact copy into exceptionally legible technical diagrams.
 
 REPOSITORY AND FILES
 
-Public repository:
+Public repository, canonical `main` branch:
 https://github.com/drukpa1455/one-more-run
 
-Local repository/worktree:
-/Users/drk/src/one-more-run-submission
+Read these public files from `main`, in order:
+1. https://github.com/drukpa1455/one-more-run/blob/main/docs/submission/design-system.md
+2. https://github.com/drukpa1455/one-more-run/blob/main/docs/submission/carousel.md
+3. https://github.com/drukpa1455/one-more-run/blob/main/docs/submission/devpost.md
+4. https://github.com/drukpa1455/one-more-run/blob/main/docs/submission/linkedin.md
+5. https://github.com/drukpa1455/one-more-run/blob/main/docs/submission/judging.md
+6. https://github.com/drukpa1455/one-more-run/blob/main/docs/submission/carousel_cli.py
 
-Read these files in order:
-1. /Users/drk/src/one-more-run-submission/docs/submission/design-system.md
-2. /Users/drk/src/one-more-run-submission/docs/submission/carousel.md
-3. /Users/drk/src/one-more-run-submission/docs/submission/devpost.md
-4. /Users/drk/src/one-more-run-submission/docs/submission/linkedin.md
-5. /Users/drk/src/one-more-run-submission/docs/submission/judging.md
-6. /Users/drk/src/one-more-run-submission/docs/submission/carousel_cli.py
+Canonical local checkout, only when local command execution is available:
+/Users/drk/src/one-more-run
 
 Engineering source for diagram accuracy:
-- /Users/drk/src/one-more-run-submission/src/one_more_run/cli.py
-- /Users/drk/src/one-more-run-submission/src/one_more_run/akash.py
-- /Users/drk/src/one-more-run-submission/src/one_more_run/pomerium.py
-- /Users/drk/src/one-more-run-submission/deploy/akash.yaml
+- https://github.com/drukpa1455/one-more-run/blob/main/src/one_more_run/cli.py
+- https://github.com/drukpa1455/one-more-run/blob/main/src/one_more_run/codex_adapter.py
+- https://github.com/drukpa1455/one-more-run/blob/main/src/one_more_run/hindsight.py
+- https://github.com/drukpa1455/one-more-run/blob/main/src/one_more_run/akash.py
+- https://github.com/drukpa1455/one-more-run/blob/main/src/one_more_run/pomerium.py
+- https://github.com/drukpa1455/one-more-run/blob/main/src/one_more_run/worker.py
+- https://github.com/drukpa1455/one-more-run/blob/main/src/one_more_run/code_runner.py
+- https://github.com/drukpa1455/one-more-run/blob/main/deploy/akash-pomerium.yaml
 
 VOICE
 
@@ -142,9 +146,9 @@ TECHNICAL STORY THAT MUST REMAIN ACCURATE
 4. Hindsight is graph-backed, derived long-term memory. It receives only
    verified evidence and recalls through semantic, keyword, graph, and temporal
    paths. The JSONL ledger remains truth.
-5. Pomerium Zero is the only public Akash service. It enforces service identity
-   and proxies to a private worker. The worker separately validates its bearer
-   token.
+5. Direct Akash is the proven default. In protected mode, Pomerium Zero is the
+   only public Akash service; it enforces service identity and proxies to a
+   private worker that separately validates its bearer token.
 6. The controller owns run, time, bid, deposit, lifecycle, and cleanup limits.
 
 QUALITY BAR
@@ -155,6 +159,7 @@ labels, hashes, ports, headers, budgets, and trust boundaries against the source
 files. If a diagram conflicts with prose, preserve the exact technical
 contract and flag the conflict instead of improvising.
 
-Start by showing me low-fidelity layouts for all eight pages in both complete
-themes. Once approved, produce final exports and editable source.
+Do not pause for questions or approval. Make reasonable layout decisions,
+produce the final exports and editable source, then show both complete theme
+sets for review.
 ```

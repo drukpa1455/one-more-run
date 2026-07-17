@@ -206,7 +206,7 @@ that retrieves relevant experience across campaigns and fails open.
 ### Headline
 
 ```text
-The evaluator is private by default.
+Protected mode makes the evaluator private.
 ```
 
 ### Diagram
@@ -220,7 +220,7 @@ flowchart LR
         C -->|candidate only| O
         M -. recalled evidence .-> O
     end
-    subgraph A[AKASH DATA PLANE]
+    subgraph A[AKASH DATA PLANE · PROTECTED MODE]
         P[[Pomerium Zero :443]]
         W[private worker :8080]
         E[fixed evaluator]
@@ -240,8 +240,9 @@ Controller: spend + lifecycle + receipts
 
 ### Speaker note
 
-Pomerium is the only public service. It consumes its identity header before the
-private worker separately verifies the application bearer token.
+Direct Akash is the proven default. In protected mode, Pomerium is the only
+public service; it consumes its identity header before the private worker
+separately verifies the application bearer token.
 
 ## Page 7 — The CLI
 

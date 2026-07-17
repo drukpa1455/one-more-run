@@ -54,10 +54,10 @@ Show page 5.
 
 ### 2:00–2:35 — Akash and Pomerium
 
-“The evaluator is private. Akash supplies the ephemeral GPU, bounded by an
-explicit deposit and bid ceiling. Pomerium Zero is the only public service and
-validates service identity before proxying to the private worker. The worker
-still checks its own bearer token. Those are separate trust boundaries.
+“Direct bearer-authenticated Akash is the proven default, bounded by an explicit
+deposit and bid ceiling. With `--pomerium`, Zero becomes the only public service
+and validates service identity before proxying to the private worker. The
+worker still checks its own bearer token. Those are separate trust boundaries.
 
 Before spend, One More Run validates the exact Zero route and policy. On exit,
 it restores the previous cluster IP and closes compute independently.”
