@@ -187,12 +187,9 @@ def parser() -> argparse.ArgumentParser:
     run_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
     run_command.add_argument("--plain", action="store_true", help="print events without a live display")
 
-    akash_command = commands.add_parser(
-        "akash",
-        help="run a Pomerium-protected Akash GPU worker",
-    )
+    akash_command = commands.add_parser("akash", help="deploy, run, and close an Akash GPU worker")
     akash_command.add_argument("research", type=Path, help="research objective in Markdown")
-    akash_command.add_argument("--sdl", type=Path, default=Path("deploy/akash.yaml"))
+    akash_command.add_argument("--sdl", type=Path)
     akash_command.add_argument("--ledger", type=Path, default=Path("experiments.jsonl"))
     akash_command.add_argument("--max-runs", type=positive_int, default=3)
     akash_command.add_argument("--timeout", type=positive_float, default=600.0, metavar="SECONDS")
@@ -201,10 +198,11 @@ def parser() -> argparse.ArgumentParser:
     akash_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
     akash_command.add_argument("--plain", action="store_true", help="print events without a live display")
     akash_command.add_argument(
-        "--yes",
+        "--pomerium",
         action="store_true",
-        help="authorize the displayed spend and route mutation",
+        help="protect the worker with a Pomerium Zero service identity",
     )
+    akash_command.add_argument("--yes", action="store_true", help="authorize the displayed spend limits")
     akash_command.set_defaults(
         adapter_module="one_more_run.akash_adapter",
         evaluator=NUMERIC_EVALUATOR,
@@ -217,7 +215,7 @@ def parser() -> argparse.ArgumentParser:
     research_command.add_argument("research", type=Path, help="research objective in Markdown")
     research_command.add_argument("--candidate", type=Path, default=Path("examples/code_candidate"))
     research_command.add_argument("--workspace", type=Path, default=Path(".omr/autoresearch"))
-    research_command.add_argument("--sdl", type=Path, default=Path("deploy/akash.yaml"))
+    research_command.add_argument("--sdl", type=Path)
     research_command.add_argument("--ledger", type=Path, default=Path("experiments.jsonl"))
     research_command.add_argument("--max-runs", type=positive_int, default=3)
     research_command.add_argument("--timeout", type=positive_float, default=900.0, metavar="SECONDS")
@@ -239,10 +237,11 @@ def parser() -> argparse.ArgumentParser:
     research_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
     research_command.add_argument("--plain", action="store_true", help="print events without a live display")
     research_command.add_argument(
-        "--yes",
+        "--pomerium",
         action="store_true",
-        help="authorize the displayed spend and route mutation",
+        help="protect the worker with a Pomerium Zero service identity",
     )
+    research_command.add_argument("--yes", action="store_true", help="authorize the displayed spend limits")
     research_command.set_defaults(
         adapter_module="one_more_run.codex_adapter",
         evaluator=CODE_EVALUATOR,

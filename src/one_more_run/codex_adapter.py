@@ -104,6 +104,7 @@ class Research:
 def main() -> int:
     worker = required("OMR_WORKER_URL").rstrip("/")
     token = required("OMR_WORKER_TOKEN")
+    pomerium_jwt = os.environ.get("OMR_POMERIUM_JWT")
     max_runs = int(required("OMR_MAX_RUNS"))
     maximize = os.environ.get("OMR_MAXIMIZE", "0") == "1"
     candidate = Path(required("OMR_CANDIDATE"))
@@ -117,7 +118,7 @@ def main() -> int:
     files = read_candidate(candidate)
     prepare(workspace, files, research_path.read_text())
     state = Research(files, maximize)
-    health = request(worker, "/healthz")
+    health = request(worker, "/healthz", pomerium_jwt=pomerium_jwt)
     evaluators = health.get("evaluators")
     if not isinstance(evaluators, list) or CODE_EVALUATOR not in evaluators:
         raise RuntimeError("worker does not support code evaluation")
@@ -144,7 +145,13 @@ def main() -> int:
                 "evaluator": CODE_EVALUATOR,
             }
         )
-        result = request(worker, "/v1/code-experiments", candidate_value, token)
+        result = request(
+            worker,
+            "/v1/code-experiments",
+            candidate_value,
+            token,
+            pomerium_jwt,
+        )
         if text(result, "candidate_sha256") != candidate_sha256:
             raise RuntimeError("worker measured a different candidate")
         if text(result, "evaluator") != CODE_EVALUATOR:
@@ -329,6 +336,7 @@ def request(
     path: str,
     payload: dict[str, Any] | None = None,
     token: str | None = None,
+    pomerium_jwt: str | None = None,
 ) -> dict[str, Any]:
     body = None if payload is None else json.dumps(payload).encode()
     headers = {"User-Agent": "one-more-run/0.1"}
@@ -336,6 +344,8 @@ def request(
         headers["Content-Type"] = "application/json"
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if pomerium_jwt:
+        headers["X-Pomerium-Authorization"] = pomerium_jwt
     call = urllib.request.Request(worker + path, data=body, headers=headers)
     try:
         with urllib.request.urlopen(call, timeout=180) as response:

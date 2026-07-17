@@ -1,3 +1,4 @@
+import io
 import json
 
 from one_more_run import codex_adapter
@@ -73,3 +74,25 @@ def test_proposal_can_take_multiple_turns_and_create_modules(tmp_path, monkeypat
         "model.py": "class Model: pass\n",
         "train.py": "improved\n",
     }
+
+
+def test_pomerium_identity_is_forwarded_to_code_evaluation(monkeypatch):
+    calls = []
+
+    def urlopen(request, timeout):
+        calls.append(request)
+        return io.BytesIO(b'{"metric":0.5}')
+
+    monkeypatch.setattr(codex_adapter.urllib.request, "urlopen", urlopen)
+
+    codex_adapter.request(
+        "https://worker.example",
+        "/v1/code-experiments",
+        {"files": {"train.py": "pass"}},
+        "worker-token",
+        "pomerium-jwt",
+    )
+
+    request = calls[0]
+    assert request.get_header("Authorization") == "Bearer worker-token"
+    assert request.get_header("X-pomerium-authorization") == "pomerium-jwt"
