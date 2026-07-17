@@ -60,7 +60,7 @@ not a hardened sandbox.
 
 ## Remaining operator-only steps
 
-- [x] Exact branch: 59 tests, Ruff, formatting, compile, both SDL parses, and
+- [x] Exact branch: 60 tests, Ruff, formatting, compile, both SDL parses, and
       both design CLI themes pass.
 - [ ] Run a paid Akash smoke only after accepting the displayed spend.
 - [ ] Keep the terminal frame labeled “illustrative” unless replaced by a real
