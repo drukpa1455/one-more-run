@@ -19,15 +19,25 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from one_more_run.protocol import identify_candidate
+
 
 class ProtocolError(ValueError):
     """An adapter emitted an invalid event."""
 
 
 @dataclass(frozen=True)
-class Experiment:
+class ExperimentPlan:
     run: int
     hypothesis: str
+    candidate: dict[str, Any]
+    candidate_sha256: str
+    evaluator: str
+
+
+@dataclass(frozen=True)
+class Experiment:
+    plan: ExperimentPlan
     metric: float | None
     decision: str
     seconds: float
@@ -41,8 +51,7 @@ class Campaign:
     maximize: bool = False
     provider: str = "waiting"
     status: str = "starting"
-    current_run: int | None = None
-    current_hypothesis: str = ""
+    current_plan: ExperimentPlan | None = None
     current_metric: float | None = None
     experiments: list[Experiment] = field(default_factory=list)
 
@@ -64,14 +73,13 @@ class Campaign:
             return None
 
         if kind == "experiment.started":
-            if self.status != "running" or self.current_run is not None:
+            if self.status != "running" or self.current_plan is not None:
                 raise ProtocolError("cannot start an experiment now")
-            run = int_field(event, "run")
+            plan = plan_from_event(event)
             expected = len(self.experiments) + 1
-            if run != expected:
-                raise ProtocolError(f"expected run {expected}, got {run}")
-            self.current_run = run
-            self.current_hypothesis = text_field(event, "hypothesis")
+            if plan.run != expected:
+                raise ProtocolError(f"expected run {expected}, got {plan.run}")
+            self.current_plan = plan
             self.current_metric = None
             self.status = "running"
             return None
@@ -82,11 +90,14 @@ class Campaign:
             return None
 
         if kind == "experiment.finished":
-            run = self.require_current(event)
+            plan = self.require_current(event)
+            if text_field(event, "candidate_sha256") != plan.candidate_sha256:
+                raise ProtocolError("worker measured a different candidate")
+            if text_field(event, "evaluator") != plan.evaluator:
+                raise ProtocolError("worker used a different evaluator")
             metric = optional_number_field(event, "metric")
             experiment = Experiment(
-                run=run,
-                hypothesis=self.current_hypothesis,
+                plan=plan,
                 metric=metric,
                 decision=self.decision(metric),
                 seconds=number_field(event, "seconds"),
@@ -94,24 +105,24 @@ class Campaign:
                 provider=self.provider,
             )
             self.experiments.append(experiment)
-            self.current_run = None
-            self.current_hypothesis = ""
+            self.current_plan = None
             self.current_metric = None
             return experiment
 
         if kind == "campaign.finished":
-            if self.status != "running" or self.current_run is not None:
+            if self.status != "running" or self.current_plan is not None:
                 raise ProtocolError("cannot finish the campaign now")
             self.status = "complete"
             return None
 
         raise ProtocolError(f"unknown event type: {kind}")
 
-    def require_current(self, event: dict[str, Any]) -> int:
+    def require_current(self, event: dict[str, Any]) -> ExperimentPlan:
         run = int_field(event, "run")
-        if self.current_run != run:
-            raise ProtocolError(f"event for run {run}, current run is {self.current_run}")
-        return run
+        if self.current_plan is None or self.current_plan.run != run:
+            current = None if self.current_plan is None else self.current_plan.run
+            raise ProtocolError(f"event for run {run}, current run is {current}")
+        return self.current_plan
 
     def decision(self, metric: float | None) -> str:
         if metric is None:
@@ -312,6 +323,7 @@ def render(campaign: Campaign) -> Group:
 
     table = Table(expand=True)
     table.add_column("RUN", justify="right", width=4)
+    table.add_column("CANDIDATE", width=10)
     table.add_column("HYPOTHESIS", ratio=1)
     table.add_column("METRIC", justify="right", width=10)
     table.add_column("DECISION", width=9)
@@ -321,27 +333,37 @@ def render(campaign: Campaign) -> Group:
         style = "green" if experiment.decision == "keep" else "red"
         metric = format_metric(experiment.metric)
         table.add_row(
-            str(experiment.run),
-            Text(experiment.hypothesis),
+            str(experiment.plan.run),
+            experiment.plan.candidate_sha256[:8],
+            Text(experiment.plan.hypothesis),
             metric,
             Text(experiment.decision, style=style),
             f"{experiment.seconds:.1f}s",
             f"${experiment.cost_usd:.2f}",
         )
 
-    if campaign.current_run is not None:
+    if campaign.current_plan is not None:
         metric = "waiting" if campaign.current_metric is None else f"metric {campaign.current_metric:.6f}"
-        current = Panel(campaign.current_hypothesis, title=f"Run {campaign.current_run} · {metric}")
+        plan = campaign.current_plan
+        current = Panel(
+            plan.hypothesis,
+            title=f"Run {plan.run} · {plan.candidate_sha256[:8]} · {metric}",
+        )
     else:
         best = campaign.best
-        detail = "No measured experiments yet" if best is None else f"Best: run {best.run} · {format_metric(best.metric)}"
+        detail = (
+            "No measured experiments yet"
+            if best is None
+            else f"Best: run {best.plan.run} · {format_metric(best.metric)}"
+        )
         current = Panel(detail)
     return Group(header, table, current)
 
 
 def summary(experiment: Experiment) -> str:
     metric = "crash" if experiment.metric is None else format_metric(experiment.metric)
-    return f"run {experiment.run}: {metric} · {experiment.decision} · {experiment.hypothesis}"
+    plan = experiment.plan
+    return f"run {plan.run} #{plan.candidate_sha256[:8]}: {metric} · {experiment.decision} · {plan.hypothesis}"
 
 
 def format_metric(metric: float | None) -> str:
@@ -385,17 +407,37 @@ def optional_number_field(event: dict[str, Any], name: str) -> float | None:
 
 
 def experiment_from_record(record: dict[str, Any]) -> Experiment:
+    plan_record = record.get("plan")
+    if not isinstance(plan_record, dict):
+        raise ProtocolError("plan must be an object")
+    plan = plan_from_event(plan_record)
+    recorded_sha256 = text_field(plan_record, "candidate_sha256")
+    if recorded_sha256 != plan.candidate_sha256:
+        raise ProtocolError("candidate_sha256 does not match candidate")
     decision = text_field(record, "decision")
     if decision not in {"keep", "reject", "crash"}:
         raise ProtocolError("decision must be keep, reject, or crash")
     return Experiment(
-        run=int_field(record, "run"),
-        hypothesis=text_field(record, "hypothesis"),
+        plan=plan,
         metric=optional_number_field(record, "metric"),
         decision=decision,
         seconds=number_field(record, "seconds"),
         cost_usd=number_field(record, "cost_usd"),
         provider=text_field(record, "provider"),
+    )
+
+
+def plan_from_event(event: dict[str, Any]) -> ExperimentPlan:
+    try:
+        candidate, candidate_sha256 = identify_candidate(event.get("candidate"))
+    except ValueError as error:
+        raise ProtocolError(str(error)) from error
+    return ExperimentPlan(
+        run=int_field(event, "run"),
+        hypothesis=text_field(event, "hypothesis"),
+        candidate=candidate,
+        candidate_sha256=candidate_sha256,
+        evaluator=text_field(event, "evaluator"),
     )
 
 

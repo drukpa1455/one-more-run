@@ -1,8 +1,44 @@
 import json
+from dataclasses import asdict
 
 import pytest
 
-from one_more_run.cli import Campaign, Experiment, ProtocolError, format_metric, load, split_adapter
+from one_more_run.cli import (
+    Campaign,
+    Experiment,
+    ExperimentPlan,
+    ProtocolError,
+    format_metric,
+    load,
+    split_adapter,
+)
+from one_more_run.protocol import identify_candidate
+
+
+CANDIDATE = {"learning_rate": 0.1, "momentum": 0.0, "steps": 80}
+EVALUATOR = "test.v1"
+
+
+def start(run: int) -> dict:
+    return {
+        "type": "experiment.started",
+        "run": run,
+        "hypothesis": f"idea {run}",
+        "candidate": {**CANDIDATE, "run": run},
+        "evaluator": EVALUATOR,
+    }
+
+
+def finish(run: int, metric: float) -> dict:
+    _, candidate_sha256 = identify_candidate({**CANDIDATE, "run": run})
+    return {
+        "type": "experiment.finished",
+        "run": run,
+        "metric": metric,
+        "seconds": 1,
+        "candidate_sha256": candidate_sha256,
+        "evaluator": EVALUATOR,
+    }
 
 
 def test_campaign_keeps_only_improvements():
@@ -11,10 +47,8 @@ def test_campaign_keeps_only_improvements():
 
     decisions = []
     for run, metric in enumerate((1.0, 1.1, 0.9), start=1):
-        campaign.apply({"type": "experiment.started", "run": run, "hypothesis": f"idea {run}"})
-        result = campaign.apply(
-            {"type": "experiment.finished", "run": run, "metric": metric, "seconds": 1}
-        )
+        campaign.apply(start(run))
+        result = campaign.apply(finish(run, metric))
         decisions.append(result.decision)
 
     assert decisions == ["keep", "reject", "keep"]
@@ -33,15 +67,40 @@ def test_campaign_requires_sequential_runs():
     campaign.apply({"type": "campaign.started", "provider": "test"})
 
     with pytest.raises(ProtocolError, match="expected run 1"):
-        campaign.apply({"type": "experiment.started", "run": 2, "hypothesis": "skip"})
+        campaign.apply(start(2))
+
+
+def test_campaign_rejects_a_mismatched_receipt():
+    campaign = Campaign("goal")
+    campaign.apply({"type": "campaign.started", "provider": "test"})
+    campaign.apply(start(1))
+
+    receipt = finish(1, 1.0)
+    receipt["candidate_sha256"] = "0" * 64
+    with pytest.raises(ProtocolError, match="different candidate"):
+        campaign.apply(receipt)
 
 
 def test_load_replays_ledger(tmp_path):
-    record = Experiment(1, "baseline", 1.0, "keep", 3.0, 0.1, "test")
+    candidate, candidate_sha256 = identify_candidate(CANDIDATE)
+    plan = ExperimentPlan(1, "baseline", candidate, candidate_sha256, EVALUATOR)
+    record = Experiment(plan, 1.0, "keep", 3.0, 0.1, "test")
     ledger = tmp_path / "experiments.jsonl"
-    ledger.write_text(json.dumps(record.__dict__) + "\n")
+    ledger.write_text(json.dumps(asdict(record)) + "\n")
 
     assert load(ledger) == [record]
+
+
+def test_load_rejects_a_candidate_changed_after_measurement(tmp_path):
+    candidate, candidate_sha256 = identify_candidate(CANDIDATE)
+    plan = ExperimentPlan(1, "baseline", candidate, candidate_sha256, EVALUATOR)
+    record = asdict(Experiment(plan, 1.0, "keep", 3.0, 0.1, "test"))
+    record["plan"]["candidate"]["steps"] = 81
+    ledger = tmp_path / "experiments.jsonl"
+    ledger.write_text(json.dumps(record) + "\n")
+
+    with pytest.raises(ProtocolError, match="invalid ledger record"):
+        load(ledger)
 
 
 def test_split_adapter_keeps_run_options():

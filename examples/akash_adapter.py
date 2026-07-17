@@ -10,6 +10,8 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from one_more_run.protocol import identify_candidate
+
 
 CANDIDATES = [
     ("baseline", {"learning_rate": 0.02, "momentum": 0.0, "steps": 80}),
@@ -39,11 +41,25 @@ def main() -> int:
     if health.get("device") != "cuda" and os.environ.get("OMR_ALLOW_CPU") != "1":
         raise RuntimeError("Akash worker has no CUDA device")
     compute = health.get("gpu") or health.get("device") or "unknown"
+    evaluator = text(health, "evaluator")
     emit({"type": "campaign.started", "provider": f"Akash · {compute}"})
 
     for run, (hypothesis, candidate) in enumerate(CANDIDATES[:max_runs], start=1):
-        emit({"type": "experiment.started", "run": run, "hypothesis": hypothesis})
+        candidate, candidate_sha256 = identify_candidate(candidate)
+        emit(
+            {
+                "type": "experiment.started",
+                "run": run,
+                "hypothesis": hypothesis,
+                "candidate": candidate,
+                "evaluator": evaluator,
+            }
+        )
         result = request(worker, "/v1/experiments", candidate, token)
+        if text(result, "candidate_sha256") != candidate_sha256:
+            raise RuntimeError("worker measured a different candidate")
+        if text(result, "evaluator") != evaluator:
+            raise RuntimeError("worker used a different evaluator")
         metric = number(result, "metric")
         seconds = number(result, "seconds")
         emit(
@@ -53,6 +69,8 @@ def main() -> int:
                 "metric": metric,
                 "seconds": seconds,
                 "cost_usd": hourly_usd * seconds / 3600,
+                "candidate_sha256": candidate_sha256,
+                "evaluator": evaluator,
             }
         )
     emit({"type": "campaign.finished"})
@@ -92,6 +110,13 @@ def number(value: dict[str, Any], name: str) -> float:
     ):
         raise RuntimeError(f"worker returned invalid {name}")
     return float(item)
+
+
+def text(value: dict[str, Any], name: str) -> str:
+    item = value.get(name)
+    if not isinstance(item, str) or not item:
+        raise RuntimeError(f"worker returned invalid {name}")
+    return item
 
 
 def required(name: str) -> str:

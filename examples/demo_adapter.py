@@ -4,6 +4,8 @@ import json
 import os
 import time
 
+from one_more_run.protocol import identify_candidate
+
 
 HYPOTHESES = [
     ("baseline", 1.0412),
@@ -21,7 +23,17 @@ def emit(event: dict) -> None:
 
 emit({"type": "campaign.started", "provider": "local demo"})
 for run, (hypothesis, metric) in enumerate(HYPOTHESES[: int(os.environ["OMR_MAX_RUNS"])], start=1):
-    emit({"type": "experiment.started", "run": run, "hypothesis": hypothesis})
+    candidate, candidate_sha256 = identify_candidate({"change": hypothesis})
+    evaluator = "demo.v1"
+    emit(
+        {
+            "type": "experiment.started",
+            "run": run,
+            "hypothesis": hypothesis,
+            "candidate": candidate,
+            "evaluator": evaluator,
+        }
+    )
     time.sleep(0.2)
     emit({"type": "experiment.progress", "run": run, "metric": metric + 0.08})
     time.sleep(0.2)
@@ -32,6 +44,8 @@ for run, (hypothesis, metric) in enumerate(HYPOTHESES[: int(os.environ["OMR_MAX_
             "metric": metric,
             "seconds": 300.0,
             "cost_usd": 0.17,
+            "candidate_sha256": candidate_sha256,
+            "evaluator": evaluator,
         }
     )
 emit({"type": "campaign.finished"})

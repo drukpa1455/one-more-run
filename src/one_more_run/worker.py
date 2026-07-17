@@ -12,6 +12,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from one_more_run.protocol import identify_candidate
+
 try:
     import torch
 except ImportError:
@@ -20,6 +22,7 @@ except ImportError:
 
 MAX_BODY_BYTES = 4_096
 RUN_LOCK = threading.Lock()
+EVALUATOR = "smoke.linear-regression.v1"
 CONFIGURED_TOKEN = os.environ.get("OMR_WORKER_TOKEN")
 TOKEN = CONFIGURED_TOKEN or secrets.token_urlsafe(32)
 
@@ -42,7 +45,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/healthz":
             self.send_json(404, {"error": "not found"})
             return
-        self.send_json(200, {"status": "ok", **device_info()})
+        self.send_json(200, {"status": "ok", "evaluator": EVALUATOR, **device_info()})
 
     def do_POST(self) -> None:
         if self.path != "/v1/experiments":
@@ -97,9 +100,18 @@ class Handler(BaseHTTPRequestHandler):
 
 def run_experiment(candidate: dict[str, Any]) -> dict[str, Any]:
     learning_rate, momentum, steps = validate(candidate)
+    _, candidate_sha256 = identify_candidate(
+        {"learning_rate": learning_rate, "momentum": momentum, "steps": steps}
+    )
     if torch is not None and torch.cuda.is_available():
-        return run_torch(learning_rate, momentum, steps)
-    return run_python(learning_rate, momentum, steps)
+        result = run_torch(learning_rate, momentum, steps)
+    else:
+        result = run_python(learning_rate, momentum, steps)
+    return {
+        "candidate_sha256": candidate_sha256,
+        "evaluator": EVALUATOR,
+        **result,
+    }
 
 
 def validate(candidate: dict[str, Any]) -> tuple[float, float, int]:
@@ -107,8 +119,8 @@ def validate(candidate: dict[str, Any]) -> tuple[float, float, int]:
     if unknown:
         raise ValueError(f"unknown candidate fields: {', '.join(sorted(unknown))}")
     learning_rate = finite_number(candidate, "learning_rate")
-    momentum = finite_number(candidate, "momentum", default=0.0)
-    steps = candidate.get("steps", 80)
+    momentum = finite_number(candidate, "momentum")
+    steps = candidate.get("steps")
     if not isinstance(steps, int) or isinstance(steps, bool) or not 1 <= steps <= 500:
         raise ValueError("steps must be an integer from 1 to 500")
     if not 0.00001 <= learning_rate <= 1.0:
@@ -118,10 +130,8 @@ def validate(candidate: dict[str, Any]) -> tuple[float, float, int]:
     return learning_rate, momentum, steps
 
 
-def finite_number(
-    candidate: dict[str, Any], name: str, default: float | None = None
-) -> float:
-    value = candidate.get(name, default)
+def finite_number(candidate: dict[str, Any], name: str) -> float:
+    value = candidate.get(name)
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise ValueError(f"{name} must be a number")
     value = float(value)
