@@ -41,7 +41,9 @@ def test_worker_receipt_identifies_the_candidate_and_evaluator():
 def test_code_worker_binds_source_to_a_fixed_evaluator(monkeypatch):
     candidate = {"files": {"train.py": "def train(*args):\n    return args[-1]\n"}}
     _, candidate_sha256 = identify_candidate(candidate)
-    monkeypatch.setattr(worker, "evaluate_code", lambda source: {"metric": 0.25, "seconds": 1.0})
+    monkeypatch.setattr(
+        worker, "evaluate_code", lambda source: {"metric": 0.25, "seconds": 1.0}
+    )
 
     result = worker.run_code_experiment(candidate)
 

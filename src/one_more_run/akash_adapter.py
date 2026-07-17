@@ -48,7 +48,9 @@ class CoordinateSearch:
 
     def propose(self) -> tuple[str, dict[str, Any]]:
         if self.pending is not None:
-            raise RuntimeError("observe the pending experiment before proposing another")
+            raise RuntimeError(
+                "observe the pending experiment before proposing another"
+            )
         if self.best_metric is None:
             candidate = dict(self.best_candidate)
             self.pending = (candidate, None)
@@ -59,7 +61,9 @@ class CoordinateSearch:
             candidate = self.adjusted(axis)
             if candidate != self.best_candidate:
                 action = "increase" if self.direction > 0 else "decrease"
-                hypothesis = f"{self.reason}; {action} {axis.name} from the current champion"
+                hypothesis = (
+                    f"{self.reason}; {action} {axis.name} from the current champion"
+                )
                 self.pending = (candidate, axis)
                 return hypothesis, candidate
             self.reason = f"{axis.name} is at its boundary"
@@ -117,13 +121,14 @@ class CoordinateSearch:
 def main() -> int:
     worker = required("OMR_WORKER_URL").rstrip("/")
     token = required("OMR_WORKER_TOKEN")
+    pomerium_jwt = required("OMR_POMERIUM_JWT")
     max_runs = int(required("OMR_MAX_RUNS"))
     maximize = os.environ.get("OMR_MAXIMIZE", "0") == "1"
     hourly_usd = float(os.environ.get("OMR_HOURLY_USD", "0"))
     if not math.isfinite(hourly_usd) or hourly_usd < 0:
         raise ValueError("OMR_HOURLY_USD must be a non-negative number")
 
-    health = request(worker, "/healthz")
+    health = request(worker, "/healthz", pomerium_jwt=pomerium_jwt)
     if health.get("device") != "cuda" and os.environ.get("OMR_ALLOW_CPU") != "1":
         raise RuntimeError("Akash worker has no CUDA device")
     compute = health.get("gpu") or health.get("device") or "unknown"
@@ -145,7 +150,13 @@ def main() -> int:
                 "evaluator": evaluator,
             }
         )
-        result = request(worker, "/v1/experiments", candidate, token)
+        result = request(
+            worker,
+            "/v1/experiments",
+            candidate,
+            token,
+            pomerium_jwt,
+        )
         if text(result, "candidate_sha256") != candidate_sha256:
             raise RuntimeError("worker measured a different candidate")
         if text(result, "evaluator") != evaluator:
@@ -173,6 +184,7 @@ def request(
     path: str,
     payload: dict[str, Any] | None = None,
     token: str | None = None,
+    pomerium_jwt: str | None = None,
 ) -> dict[str, Any]:
     body = None if payload is None else json.dumps(payload).encode()
     headers = {"User-Agent": "one-more-run/0.1"}
@@ -180,6 +192,8 @@ def request(
         headers["Content-Type"] = "application/json"
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if pomerium_jwt:
+        headers["X-Pomerium-Authorization"] = pomerium_jwt
     call = urllib.request.Request(worker + path, data=body, headers=headers)
     try:
         with urllib.request.urlopen(call, timeout=180) as response:
