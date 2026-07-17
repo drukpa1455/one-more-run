@@ -27,12 +27,14 @@ def test_codex_environment_excludes_compute_credentials(tmp_path, monkeypatch):
     monkeypatch.setenv("OMR_CREDENTIALS", str(credentials))
     monkeypatch.setenv("OMR_WORKER_TOKEN", "worker-secret")
     monkeypatch.setenv("AKASH_API_KEY", "akash-secret")
+    monkeypatch.setenv("POMERIUM_ZERO_API_TOKEN", "pomerium-secret")
 
     environment = codex_adapter.codex_environment()
 
     assert environment["CODEX_API_KEY"] == "codex-secret"
     assert "OMR_WORKER_TOKEN" not in environment
     assert "AKASH_API_KEY" not in environment
+    assert "POMERIUM_ZERO_API_TOKEN" not in environment
 
 
 def test_proposal_can_take_multiple_turns_and_create_modules(tmp_path, monkeypatch):

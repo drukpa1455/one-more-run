@@ -168,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command_name == "setup":
             return setup(args)
         if args.command_name == "doctor":
-            return doctor()
+            return doctor(args.pomerium)
     except (OSError, ProtocolError, ValueError) as error:
         Console(stderr=True).print(f"[red]error:[/red] {error}")
         return 1
@@ -258,7 +258,15 @@ def parser() -> argparse.ArgumentParser:
         help="import CODEX_API_KEY and AKASH_API_KEY from this process",
     )
 
-    commands.add_parser("doctor", help="check Codex and Akash prerequisites without printing secrets")
+    doctor_command = commands.add_parser(
+        "doctor",
+        help="check prerequisites without printing secrets",
+    )
+    doctor_command.add_argument(
+        "--pomerium",
+        action="store_true",
+        help="also require the optional Pomerium credentials",
+    )
     return root
 
 
@@ -270,7 +278,7 @@ def setup(args: argparse.Namespace) -> int:
     return 0
 
 
-def doctor() -> int:
+def doctor(pomerium: bool = False) -> int:
     from one_more_run.settings import secret
 
     console = Console()
@@ -290,6 +298,21 @@ def doctor() -> int:
         "Codex authentication": bool(codex_key or logged_in),
         "Akash credential": secret("AKASH_API_KEY") is not None,
     }
+    if pomerium:
+        checks.update(
+            {
+                "Pomerium cluster token": bool(
+                    os.environ.get("POMERIUM_ZERO_TOKEN")
+                ),
+                "Pomerium API token": bool(
+                    os.environ.get("POMERIUM_ZERO_API_TOKEN")
+                ),
+                "Pomerium route": bool(os.environ.get("POMERIUM_ROUTE_URL")),
+                "Pomerium service account": bool(
+                    os.environ.get("POMERIUM_SERVICE_ACCOUNT_JWT")
+                ),
+            }
+        )
     for label, ready in checks.items():
         console.print(f"{'[green]ready[/green]' if ready else '[red]missing[/red]'}  {label}")
     return 0 if all(checks.values()) else 1

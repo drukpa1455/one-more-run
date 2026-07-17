@@ -3,6 +3,7 @@ from dataclasses import asdict
 
 import pytest
 
+from one_more_run import cli
 from one_more_run.cli import (
     Campaign,
     Experiment,
@@ -112,3 +113,22 @@ def test_split_adapter_keeps_run_options():
 
 def test_small_metrics_remain_visible():
     assert format_metric(7.155e-8) == "7.155e-08"
+
+
+def test_doctor_checks_pomerium_only_when_requested(monkeypatch):
+    monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setenv("CODEX_API_KEY", "codex-secret")
+    monkeypatch.setenv("AKASH_API_KEY", "akash-secret")
+
+    assert cli.doctor() == 0
+    assert cli.doctor(pomerium=True) == 1
+
+    for name in (
+        "POMERIUM_ZERO_TOKEN",
+        "POMERIUM_ZERO_API_TOKEN",
+        "POMERIUM_ROUTE_URL",
+        "POMERIUM_SERVICE_ACCOUNT_JWT",
+    ):
+        monkeypatch.setenv(name, "configured")
+
+    assert cli.doctor(pomerium=True) == 0
