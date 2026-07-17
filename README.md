@@ -89,7 +89,7 @@ source-informed exact-basis result is preserved and disclosed separately.
 
 Replay the real campaign over 2:45 while narrating it. The terminal reveals each
 actual candidate, source hash, program change, metric, decision, and evaluator
-receipt at presentation pace:
+receipt at presentation pace, with a `WHY IT MATTERS` panel for every phase:
 
 ```bash
 uv run omr replay demo/experiments.jsonl --seconds 165

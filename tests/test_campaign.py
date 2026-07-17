@@ -158,6 +158,27 @@ def test_replay_is_explicitly_labeled(tmp_path, monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "VERIFIED REPLAY" in output
     assert "no compute is running" in output
+    assert "WHY IT MATTERS" in output
+
+
+def test_receipt_talking_points_calculate_improvement():
+    candidate, candidate_sha256 = identify_candidate(CANDIDATE)
+    baseline_plan = ExperimentPlan(1, "baseline", candidate, candidate_sha256, EVALUATOR)
+    next_candidate, next_sha256 = identify_candidate({**CANDIDATE, "steps": 81})
+    next_plan = ExperimentPlan(2, "improve", next_candidate, next_sha256, EVALUATOR)
+    baseline = Experiment(baseline_plan, 1.0, "keep", 3.0, 0.0, "test")
+    result = Experiment(next_plan, 0.25, "keep", 3.0, 0.0, "test")
+    campaign = Campaign("goal", experiments=[baseline, result])
+
+    points = cli.talking_points(
+        campaign,
+        result,
+        True,
+        {candidate_sha256: "baseline", next_sha256: "steps 80→81"},
+    )
+
+    assert points[0] == "Measured improvement over the prior champion: 75.00%."
+    assert "measurement—not plausibility" in points[1]
 
 
 def test_doctor_checks_pomerium_only_when_requested(monkeypatch):

@@ -603,12 +603,82 @@ def replay_render(
             )
             detail_title = f"RUN {current.plan.run} · CANDIDATE READY"
 
+    detail.append("\n\nWHY IT MATTERS\n", style="bold magenta")
+    for point in talking_points(campaign, current, revealed, changes):
+        detail.append(f"• {point}\n")
+
     width = 32
     complete = min(int(progress * width), width)
     bar = Text("█" * complete, style="cyan")
     bar.append("░" * (width - complete), style="dim")
     bar.append(f"  {progress:>6.1%}  ·  replay only", style="dim")
     return Group(header, table, Panel(detail, title=detail_title), bar)
+
+
+def talking_points(
+    campaign: Campaign,
+    current: Experiment | None,
+    revealed: bool,
+    changes: dict[str, str],
+) -> list[str]:
+    if current is None:
+        return [
+            "The ledger preserves each decision with its source and evaluator identity.",
+            "The agent proposes; the fixed experiment decides what becomes champion.",
+            "One More Prompt starts the idea. One More Run tests it.",
+        ]
+
+    source = current.plan.candidate_sha256[:8]
+    if not revealed:
+        if current.plan.run == 1:
+            opening = "A fixed baseline makes every later improvement comparable."
+        else:
+            actor = "Codex" if "Codex" in current.provider else "The research loop"
+            opening = f"{actor} chose this change after observing the previous receipt."
+        return [
+            opening,
+            f"Program delta: {changes[current.plan.candidate_sha256]}.",
+            f"Source #{source} changes; evaluator {current.plan.evaluator} does not.",
+        ]
+
+    prior = next(
+        (
+            experiment
+            for experiment in reversed(campaign.experiments)
+            if experiment.plan.run < current.plan.run
+            and experiment.decision == "keep"
+            and experiment.metric is not None
+        ),
+        None,
+    )
+    if current.metric is None:
+        result = "The evaluator returned no metric; this crash remains visible evidence."
+    elif prior is None:
+        result = f"This receipt establishes the measured baseline at {format_metric(current.metric)}."
+    elif prior.metric == 0:
+        result = f"The prior champion was zero; this receipt measured {format_metric(current.metric)}."
+    else:
+        difference = (
+            current.metric - prior.metric
+            if campaign.maximize
+            else prior.metric - current.metric
+        )
+        improvement = difference / abs(prior.metric) * 100
+        result = (
+            f"Measured improvement over the prior champion: {improvement:.2f}%."
+            if improvement >= 0
+            else f"Measured regression from the prior champion: {-improvement:.2f}%."
+        )
+    decision = {
+        "keep": "KEEP means measurement—not plausibility—advanced the champion.",
+        "reject": "REJECT preserves the prior champion and keeps this failure as evidence.",
+        "crash": "CRASH is retained as evidence instead of disappearing from the loop.",
+    }[current.decision]
+    return [
+        result,
+        decision,
+        f"The receipt binds metric, source #{source}, and evaluator identity.",
+    ]
 
 
 def describe_candidate_change(
