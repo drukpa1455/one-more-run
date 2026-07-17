@@ -187,7 +187,10 @@ def parser() -> argparse.ArgumentParser:
     run_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
     run_command.add_argument("--plain", action="store_true", help="print events without a live display")
 
-    akash_command = commands.add_parser("akash", help="deploy, run, and close an Akash GPU worker")
+    akash_command = commands.add_parser(
+        "akash",
+        help="run a Pomerium-protected Akash GPU worker",
+    )
     akash_command.add_argument("research", type=Path, help="research objective in Markdown")
     akash_command.add_argument("--sdl", type=Path, default=Path("deploy/akash.yaml"))
     akash_command.add_argument("--ledger", type=Path, default=Path("experiments.jsonl"))
@@ -197,7 +200,11 @@ def parser() -> argparse.ArgumentParser:
     akash_command.add_argument("--max-bid", type=positive_float, default=1000.0, metavar="UACT")
     akash_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
     akash_command.add_argument("--plain", action="store_true", help="print events without a live display")
-    akash_command.add_argument("--yes", action="store_true", help="authorize the displayed spend limits")
+    akash_command.add_argument(
+        "--yes",
+        action="store_true",
+        help="authorize the displayed spend and route mutation",
+    )
     akash_command.set_defaults(
         adapter_module="one_more_run.akash_adapter",
         evaluator=NUMERIC_EVALUATOR,
@@ -231,7 +238,11 @@ def parser() -> argparse.ArgumentParser:
     research_command.add_argument("--model", help="optional Codex model override")
     research_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
     research_command.add_argument("--plain", action="store_true", help="print events without a live display")
-    research_command.add_argument("--yes", action="store_true", help="authorize the displayed spend limits")
+    research_command.add_argument(
+        "--yes",
+        action="store_true",
+        help="authorize the displayed spend and route mutation",
+    )
     research_command.set_defaults(
         adapter_module="one_more_run.codex_adapter",
         evaluator=CODE_EVALUATOR,
