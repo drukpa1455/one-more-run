@@ -319,7 +319,7 @@ def render(campaign: Campaign) -> Group:
     table.add_column("COST", justify="right", width=8)
     for experiment in campaign.experiments[-10:]:
         style = "green" if experiment.decision == "keep" else "red"
-        metric = "—" if experiment.metric is None else f"{experiment.metric:.6f}"
+        metric = format_metric(experiment.metric)
         table.add_row(
             str(experiment.run),
             Text(experiment.hypothesis),
@@ -334,14 +334,22 @@ def render(campaign: Campaign) -> Group:
         current = Panel(campaign.current_hypothesis, title=f"Run {campaign.current_run} · {metric}")
     else:
         best = campaign.best
-        detail = "No measured experiments yet" if best is None else f"Best: run {best.run} · {best.metric:.6f}"
+        detail = "No measured experiments yet" if best is None else f"Best: run {best.run} · {format_metric(best.metric)}"
         current = Panel(detail)
     return Group(header, table, current)
 
 
 def summary(experiment: Experiment) -> str:
-    metric = "crash" if experiment.metric is None else f"{experiment.metric:.6f}"
+    metric = "crash" if experiment.metric is None else format_metric(experiment.metric)
     return f"run {experiment.run}: {metric} · {experiment.decision} · {experiment.hypothesis}"
+
+
+def format_metric(metric: float | None) -> str:
+    if metric is None:
+        return "—"
+    if metric and abs(metric) < 0.0001:
+        return f"{metric:.3e}"
+    return f"{metric:.6f}"
 
 
 def text_field(event: dict[str, Any], name: str) -> str:

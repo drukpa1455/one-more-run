@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from one_more_run.cli import Campaign, Experiment, ProtocolError, load, split_adapter
+from one_more_run.cli import Campaign, Experiment, ProtocolError, format_metric, load, split_adapter
 
 
 def test_campaign_keeps_only_improvements():
@@ -49,3 +49,7 @@ def test_split_adapter_keeps_run_options():
 
     assert split_adapter(arguments) == ["python", "adapter.py"]
     assert arguments == ["run", "research.md", "--plain"]
+
+
+def test_small_metrics_remain_visible():
+    assert format_metric(7.155e-8) == "7.155e-08"

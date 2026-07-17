@@ -1,0 +1,42 @@
+version: "2.0"
+
+services:
+  worker:
+    image: ghcr.io/drukpa1455/one-more-run-worker:main
+    expose:
+      - port: 8080
+        as: 80
+        to:
+          - global: true
+
+profiles:
+  compute:
+    worker:
+      resources:
+        cpu:
+          units: 4
+        memory:
+          size: 8Gi
+        storage:
+          - size: 16Gi
+        gpu:
+          units: 1
+          attributes:
+            vendor:
+              nvidia:
+                - model: rtx3090
+                - model: rtx6000
+                - model: v100
+                - model: t4
+  placement:
+    akash:
+      pricing:
+        worker:
+          denom: uact
+          amount: 1000
+
+deployment:
+  worker:
+    akash:
+      profile: worker
+      count: 1

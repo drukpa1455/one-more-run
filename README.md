@@ -59,6 +59,35 @@ fixed; only the candidate file crosses the boundary.
 
 The `autoresearch` submodule supplies the initial research workload.
 
+## Try the Akash worker
+
+The first real adapter runs a fixed, bounded optimization workload on one GPU.
+It proves the remote execution path before we allow an agent to submit code.
+
+1. Start the [$100 Akash Console trial](https://akash.network/docs/getting-started/quick-start/)
+   or use an existing funded account.
+2. Deploy [`deploy/akash.yaml`](deploy/akash.yaml) in Akash Console.
+3. Open the deployment logs and copy the generated `worker token`.
+4. Set the endpoint and token only in your shell, then run:
+
+```bash
+export OMR_WORKER_URL=https://your-worker.provider.example
+read -s "OMR_WORKER_TOKEN?Worker token: "
+export OMR_WORKER_TOKEN
+uv run omr run research.md -- uv run python examples/akash_adapter.py
+```
+
+The worker accepts only three bounded numeric parameters; it cannot execute
+submitted code. It serializes experiments, rejects oversized requests, and
+generates a fresh bearer token on every start. The SDL accepts several
+trial-eligible NVIDIA models and caps bids at `1000 uact` per block (about
+$0.60/hour at six-second blocks). Close the deployment immediately after the
+test.
+
+The worker image is published to GHCR from pinned GitHub Actions. The Akash SDL
+uses the moving `main` tag only during hackathon development; pin the resulting
+image digest before a judged run.
+
 ## Hackathon target
 
 - Local research agent that changes one candidate file.
