@@ -21,12 +21,12 @@ def main() -> int:
     console = Console(theme=palette.rich(), width=104, color_system="truecolor")
 
     title = Text("ONE MORE RUN", style="omr.title")
-    title.append("  nested research · outer 03/06", style="omr.muted")
+    title.append("  nested research · outer 03/03", style="omr.muted")
     console.print(
         Panel(
             Text.from_markup(
                 "minimize held-out validation MSE\n"
-                "[omr.muted]Akash · NVIDIA A100 · Pomerium Zero · memory recalled[/omr.muted]"
+                "[omr.muted]Akash · NVIDIA T4 · Pomerium Zero · memory recalled[/omr.muted]"
             ),
             title=title,
             border_style="omr.accent",

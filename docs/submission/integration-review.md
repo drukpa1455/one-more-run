@@ -2,54 +2,53 @@
 
 Private working note. Do not paste this file into Devpost or LinkedIn.
 
-## Work reviewed
+## Converged build
 
-| Capability | Location | Evidence observed |
+| Capability | Canonical owner | Fresh evidence |
 |---|---|---|
-| Adaptive measured outer loop | `agent/adaptive-automl-loop`, PR #1 | committed; fixed evaluator, candidate hashes, keep/reject loop |
-| Pomerium Zero on Akash | `agent/pomerium`, PR #2 | committed; 39 tests; route/policy preflight and bounded cleanup |
-| Hindsight memory | shared `agent/pomerium` worktree | uncommitted during review; 45 tests passed independently |
-| Whole-program Codex loop | `/Users/drk/src/one-more-run-codex-loop` | uncommitted during review; 38 tests passed independently |
-| Public materials | `agent/submission-materials` | isolated worktree to avoid touching either implementation owner |
+| Bounded inner Codex loop | `codex_adapter.py` | complete-program edits, readiness gate, protected memory input |
+| Empirical outer loop | `cli.py` | candidate/evaluator verification, fsynced JSONL, keep/reject/crash |
+| Akash lifecycle | `akash.py` | explicit spend approval, bounded bid/deadline, independent cleanup |
+| Pomerium Zero boundary | `pomerium.py`, `deploy/akash.yaml` | route/upstream/policy validation, private worker, route restoration |
+| Long-term memory | `hindsight.py` | bounded fail-open recall and idempotent post-receipt retention |
+| Fixed code evaluator | `worker.py`, `code_runner.py` | bounded payload, hidden targets, child-process timeout |
+| Public materials | `docs/submission/` | Devpost, LinkedIn, carousel, judging script, two complete themes |
 
-No child agents remained active in this thread when reviewed. The two dirty
-worktrees are therefore the only additional implementation state visible from
-this checkout.
+The final integration keeps one owner per fact:
 
-## What converges cleanly
-
-The target system has a strong primitive split:
-
-1. Codex mutates only a bounded candidate workspace.
+1. Codex mutates only the candidate workspace.
 2. The controller owns budgets, orchestration, receipts, and the champion.
-3. The Akash worker owns fixed evaluation.
-4. Pomerium owns external identity and route policy.
-5. The worker bearer token remains a separate application-auth boundary.
+3. The Akash worker owns fixed measurement.
+4. Pomerium owns external service identity and route policy.
+5. The worker bearer token remains separate application authentication.
 6. The JSONL ledger is durable truth; Hindsight is rebuildable derived memory.
 
-That is the right story for judges because every layer has one visible job.
+## Verified stitching
 
-## Required stitching before judging
+- The Codex research adapter sends `X-Pomerium-Authorization` on health and
+  code-experiment requests while keeping the worker bearer token separate.
+- Recalled `OMR_MEMORY` is materialized as protected `memory.md`; Hindsight,
+  Akash, Pomerium, and worker credentials are excluded from Codex.
+- Retention happens only after the controller validates the receipt and fsyncs
+  the JSONL ledger.
+- The final SDL keeps the published code-worker digest from PR #4 and adds a
+  digest-pinned Pomerium service as the only public endpoint.
+- Both source submodules initialize at their pinned revisions.
+- `uv run pytest -q` passes all 58 combined tests.
+- The repository is public and the design CLI renders in both Opal and Garnet.
 
-1. Merge the whole-program loop onto the Pomerium stack. Both branches change
-   `akash.py`, `cli.py`, `README.md`, worker behavior, and tests; resolve by
-   semantics rather than by choosing one file wholesale.
-2. Pass `OMR_POMERIUM_JWT` into the Codex adapter and add
-   `X-Pomerium-Authorization` to both health and code-experiment requests.
-3. Put recalled `OMR_MEMORY` into a protected `memory.md` control file or the
-   inner-loop prompt. The current Hindsight branch recalls memory, but the
-   whole-program Codex adapter does not yet consume it.
-4. Retain memory only after candidate/evaluator identity validation and the
-   durable JSONL append. Preserve the current fail-open memory behavior.
-5. Add Hindsight environment names to every secret-drop boundary; never send
-   its API key to Codex, Akash, Pomerium, or the worker.
-6. Rebuild the worker image with `code_runner.py`, publish it, and replace the
-   SDL digest. The source change alone does not update the Akash runtime.
-7. Calculate or omit displayed experiment cost. The whole-program adapter
-   currently emits `cost_usd: 0.0`; do not present this as measured zero cost.
-8. Run the combined test suite, then one local end-to-end campaign. Run a paid
-   Akash/Pomerium smoke only with the explicit spend confirmation already built
-   into `--yes`.
+## Remaining operator-only steps
+
+These require external state or user-owned accounts and are intentionally not
+fabricated:
+
+1. Run a paid Akash/Pomerium smoke only if the displayed deposit, bid, deadline,
+   and temporary route mutation are acceptable; `--yes` is the confirmation.
+2. Keep the carousel terminal marked “illustrative design mock” unless it is
+   replaced with a real receipt.
+3. Upload the final public/unlisted video and test its URL and the repository
+   URL in an incognito window.
+4. Select Akash and Pomerium in Devpost's sponsor-prize field and submit.
 
 ## Security wording
 
@@ -60,7 +59,7 @@ Say:
 - separate child process;
 - hard timeout;
 - scrubbed environment;
-- held-out validation targets;
+- held-out validation targets; and
 - Pomerium-protected network boundary.
 
 Do not say:
@@ -71,19 +70,18 @@ Do not say:
 - signed receipt; or
 - production-hardened arbitrary-code execution.
 
-The current evaluator executes candidate Python in a child process on a
-dedicated worker. Timeout and environment scrubbing are useful boundaries, but
-they are not a hardened sandbox.
+The evaluator executes candidate Python in a child process on a dedicated
+worker. Timeout and environment scrubbing are useful boundaries, but they are
+not a hardened sandbox.
 
 ## Submission truth gate
 
-- [ ] Combined branch contains outer loop, inner loop, Hindsight, Akash, and
-      Pomerium.
-- [ ] All combined tests pass.
-- [ ] `OMR_MEMORY` reaches the inner Codex loop.
-- [ ] Pomerium identity reaches code-evaluator requests.
-- [ ] Worker image digest matches the combined source.
-- [ ] Repository is public and both submodules initialize.
-- [ ] Design mock is captioned “illustrative” unless replaced by a live run.
-- [ ] Video and repository links work in an incognito browser.
-- [ ] Devpost special-prize selections are Akash and Pomerium only.
+- [x] Outer loop, inner loop, Hindsight, Akash, and Pomerium converge.
+- [x] `OMR_MEMORY` reaches the protected Codex context.
+- [x] Pomerium identity reaches both code-evaluator requests.
+- [x] Worker image digest includes the code evaluator.
+- [x] Repository is public and both submodules initialize.
+- [x] Both complete design modes and the captioned illustrative CLI exist.
+- [ ] Optional paid infrastructure smoke is recorded.
+- [ ] Final video and public links are tested without login.
+- [ ] Devpost fields are pasted, sponsor prizes selected, and submission sent.

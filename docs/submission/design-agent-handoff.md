@@ -14,21 +14,25 @@ Public repository:
 https://github.com/drukpa1455/one-more-run
 
 Local repository/worktree:
-/Users/drk/src/one-more-run-submission
+/Users/drk/src/one-more-run-final
 
 Read these files in order:
-1. /Users/drk/src/one-more-run-submission/docs/submission/design-system.md
-2. /Users/drk/src/one-more-run-submission/docs/submission/carousel.md
-3. /Users/drk/src/one-more-run-submission/docs/submission/devpost.md
-4. /Users/drk/src/one-more-run-submission/docs/submission/linkedin.md
-5. /Users/drk/src/one-more-run-submission/docs/submission/judging.md
-6. /Users/drk/src/one-more-run-submission/docs/submission/carousel_cli.py
+1. /Users/drk/src/one-more-run-final/docs/submission/design-system.md
+2. /Users/drk/src/one-more-run-final/docs/submission/carousel.md
+3. /Users/drk/src/one-more-run-final/docs/submission/devpost.md
+4. /Users/drk/src/one-more-run-final/docs/submission/linkedin.md
+5. /Users/drk/src/one-more-run-final/docs/submission/judging.md
+6. /Users/drk/src/one-more-run-final/docs/submission/carousel_cli.py
 
 Engineering source for diagram accuracy:
-- /Users/drk/src/one-more-run-submission/src/one_more_run/cli.py
-- /Users/drk/src/one-more-run-submission/src/one_more_run/akash.py
-- /Users/drk/src/one-more-run-submission/src/one_more_run/pomerium.py
-- /Users/drk/src/one-more-run-submission/deploy/akash.yaml
+- /Users/drk/src/one-more-run-final/src/one_more_run/cli.py
+- /Users/drk/src/one-more-run-final/src/one_more_run/codex_adapter.py
+- /Users/drk/src/one-more-run-final/src/one_more_run/hindsight.py
+- /Users/drk/src/one-more-run-final/src/one_more_run/akash.py
+- /Users/drk/src/one-more-run-final/src/one_more_run/pomerium.py
+- /Users/drk/src/one-more-run-final/src/one_more_run/worker.py
+- /Users/drk/src/one-more-run-final/src/one_more_run/code_runner.py
+- /Users/drk/src/one-more-run-final/deploy/akash.yaml
 
 VOICE
 
@@ -155,6 +159,7 @@ labels, hashes, ports, headers, budgets, and trust boundaries against the source
 files. If a diagram conflicts with prose, preserve the exact technical
 contract and flag the conflict instead of improvising.
 
-Start by showing me low-fidelity layouts for all eight pages in both complete
-themes. Once approved, produce final exports and editable source.
+Do not pause for questions or approval. Make reasonable layout decisions,
+produce the final exports and editable source, then show both complete theme
+sets for review.
 ```
