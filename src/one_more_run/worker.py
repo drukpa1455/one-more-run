@@ -142,7 +142,6 @@ def run_experiment(candidate: dict[str, Any]) -> dict[str, Any]:
 
 def run_code_experiment(candidate: dict[str, Any]) -> dict[str, Any]:
     candidate, candidate_sha256 = identify_code_candidate(candidate)
-    files = candidate["files"]
     result = evaluate_code(candidate["files"])
     return {
         "candidate_sha256": candidate_sha256,
