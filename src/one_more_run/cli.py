@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -20,6 +21,12 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from one_more_run.hindsight import (
+    ENVIRONMENT as HINDSIGHT_ENVIRONMENT,
+    Hindsight,
+    HindsightError,
+    from_environment as hindsight_from_environment,
+)
 from one_more_run.protocol import (
     CODE_EVALUATOR,
     NUMERIC_EVALUATOR,
@@ -307,12 +314,21 @@ def run(args: argparse.Namespace) -> int:
     if args.ledger.exists():
         raise ValueError(f"ledger already exists: {args.ledger}")
     args.ledger.parent.mkdir(parents=True, exist_ok=True)
+    memory = hindsight_from_environment(os.environ)
+    recalled = recall_memory(memory, campaign.goal)
+    campaign_id = hashlib.sha256(
+        f"{args.ledger.resolve()}\0{campaign.goal}".encode()
+    ).hexdigest()
     environment = os.environ.copy()
+    for name in HINDSIGHT_ENVIRONMENT:
+        environment.pop(name, None)
     environment.update(
         OMR_RESEARCH=str(args.research.resolve()),
         OMR_MAX_RUNS=str(args.max_runs),
         OMR_MAXIMIZE="1" if args.maximize else "0",
     )
+    if recalled is not None:
+        environment["OMR_MEMORY"] = recalled
     environment.update(getattr(args, "environment", {}))
     for name in getattr(args, "drop_environment", ()):
         environment.pop(name, None)
@@ -326,7 +342,16 @@ def run(args: argparse.Namespace) -> int:
     )
 
     try:
-        return consume(process, campaign, args.ledger, args.max_runs, args.timeout, args.plain)
+        return consume(
+            process,
+            campaign,
+            args.ledger,
+            args.max_runs,
+            args.timeout,
+            args.plain,
+            memory,
+            campaign_id,
+        )
     finally:
         stop(process)
 
@@ -338,6 +363,8 @@ def consume(
     max_runs: int,
     timeout: float,
     plain: bool,
+    memory: Hindsight | None = None,
+    campaign_id: str = "",
 ) -> int:
     lines: queue.Queue[str | None] = queue.Queue()
     reader = threading.Thread(target=read_lines, args=(process, lines), daemon=True)
@@ -366,6 +393,7 @@ def consume(
             experiment = campaign.apply(event)
             if experiment:
                 append(ledger, experiment)
+                retain_memory(memory, campaign, experiment, campaign_id)
                 if plain:
                     console.print(Text(summary(experiment)))
                 if len(campaign.experiments) >= max_runs:
@@ -386,6 +414,56 @@ def consume(
     if not campaign.experiments:
         raise ProtocolError("adapter completed without an experiment")
     return 0
+
+
+def recall_memory(memory: Hindsight | None, goal: str) -> str | None:
+    if memory is None:
+        return None
+    try:
+        return memory.recall(goal)
+    except HindsightError as error:
+        warning(f"Hindsight recall failed: {error}")
+        return ""
+
+
+def retain_memory(
+    memory: Hindsight | None,
+    campaign: Campaign,
+    experiment: Experiment,
+    campaign_id: str,
+) -> None:
+    if memory is None:
+        return
+    plan = experiment.plan
+    metric = "crashed" if experiment.metric is None else f"{experiment.metric:.12g}"
+    direction = "higher" if campaign.maximize else "lower"
+    candidate = json.dumps(plan.candidate, separators=(",", ":"), sort_keys=True)
+    content = "\n".join(
+        (
+            f"Research objective: {campaign.goal}",
+            f"Hypothesis: {plan.hypothesis}",
+            f"Candidate: {candidate}",
+            f"Evaluator: {plan.evaluator}",
+            f"Result: metric {metric}; {direction} is better; decision {experiment.decision}.",
+        )
+    )
+    document_id = f"omr-{campaign_id[:16]}-{plan.run}-{plan.candidate_sha256}"
+    metadata = {
+        "source": "one-more-run",
+        "candidate_sha256": plan.candidate_sha256,
+        "evaluator": plan.evaluator,
+        "decision": experiment.decision,
+        "provider": experiment.provider,
+    }
+    goal = campaign.goal.splitlines()[0].lstrip("# ") if campaign.goal else "research"
+    try:
+        memory.retain(content, document_id, metadata, f"One More Run: {goal}")
+    except HindsightError as error:
+        warning(f"Hindsight retain failed: {error}")
+
+
+def warning(message: str) -> None:
+    Console(stderr=True).print(Text(f"warning: {message}", style="yellow"))
 
 
 def status(args: argparse.Namespace) -> int:
