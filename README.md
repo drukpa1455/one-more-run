@@ -36,9 +36,10 @@ uv run omr run research.md --plain -- uv run python examples/demo_adapter.py
 uv run omr status experiments.jsonl
 ```
 
-Remove `--plain` for the live terminal display. The demo adapter performs no
-training; it exists to exercise the real process boundary, budget enforcement,
-ledger, and UI without a GPU.
+Remove `--plain` for the live terminal display. The demo adapter runs the same
+adaptive coordinate search and fixed evaluator as the remote path, using a
+deterministic CPU fallback when CUDA is unavailable. It exercises the real
+propose, measure, observe, keep-or-reject loop without a deployment.
 
 ## Adapter protocol
 
@@ -53,13 +54,15 @@ to standard error:
 {"type":"campaign.finished"}
 ```
 
-One More Run passes `OMR_RESEARCH` and `OMR_MAX_RUNS` to the adapter. The CLI is
-the sole owner of the ledger. It normalizes and hashes the candidate before the
-run, then requires the finished event to carry the same hash and evaluator ID.
+One More Run passes `OMR_RESEARCH`, `OMR_MAX_RUNS`, and `OMR_MAXIMIZE` to the
+adapter. The CLI is the sole owner of the ledger. It normalizes and hashes the
+candidate before the run, then requires the finished event to carry the same
+hash and evaluator ID.
 The ledger therefore preserves rejected candidates instead of retaining only a
-score and description. The next adapter submits `train.py` to a
-Pomerium-protected evaluator on an Akash GPU. The evaluator and dataset stay
-fixed; only the candidate file crosses the boundary.
+score and description. The Akash adapter proposes one coordinate from the
+current measured champion. An improvement advances the champion; a regression
+reverses that coordinate before the search moves on. The authenticated evaluator
+and workload stay fixed; only the bounded candidate crosses the boundary.
 
 The `autoresearch` submodule supplies the initial research workload.
 
@@ -90,15 +93,16 @@ See the [Managed Wallet API documentation](https://akash.network/docs/api-docume
 The current worker accepts exactly three bounded numeric parameters; it cannot
 execute submitted code. It serializes experiments, rejects oversized requests,
 and returns a receipt identifying the normalized candidate and fixed evaluator.
-The SDL accepts several trial-eligible NVIDIA models.
+Editable source evaluation and Pomerium protection are subsequent milestones,
+not current behavior. The SDL accepts several trial-eligible NVIDIA models.
 
 The worker image is published to GHCR from pinned GitHub Actions, and the Akash
 SDL pins its immutable OCI digest.
 
 ## Hackathon target
 
-- Local research agent that changes one candidate file.
-- Akash GPU evaluator behind Pomerium identity-aware access.
+- Adaptive AutoML search driven by the previous measured result.
+- Authenticated Akash GPU evaluator with a fixed workload.
 - Fixed evaluation and bounded runs, time, and spend.
 - Live results with hypotheses, metrics, decisions, duration, and cost.
 - A content-addressed winning candidate and replayable `experiments.jsonl`.

@@ -19,7 +19,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from one_more_run.protocol import identify_candidate
+from one_more_run.protocol import identify_candidate, improves
 
 
 class ProtocolError(ValueError):
@@ -128,10 +128,8 @@ class Campaign:
         if metric is None:
             return "crash"
         best = self.best
-        if best is None:
-            return "keep"
-        improved = metric > best.metric if self.maximize else metric < best.metric
-        return "keep" if improved else "reject"
+        incumbent = None if best is None else best.metric
+        return "keep" if improves(metric, incumbent, self.maximize) else "reject"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -199,6 +197,7 @@ def run(args: argparse.Namespace) -> int:
     environment.update(
         OMR_RESEARCH=str(args.research.resolve()),
         OMR_MAX_RUNS=str(args.max_runs),
+        OMR_MAXIMIZE="1" if args.maximize else "0",
     )
     environment.update(getattr(args, "environment", {}))
     for name in getattr(args, "drop_environment", ()):

@@ -8,31 +8,117 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from typing import Any
 
-from one_more_run.protocol import identify_candidate
+from one_more_run.protocol import identify_candidate, improves
 
 
-CANDIDATES = [
-    ("baseline", {"learning_rate": 0.02, "momentum": 0.0, "steps": 80}),
-    ("increase learning rate", {"learning_rate": 0.05, "momentum": 0.0, "steps": 80}),
-    (
-        "increase learning rate again",
-        {"learning_rate": 0.1, "momentum": 0.0, "steps": 80},
-    ),
-    ("add momentum", {"learning_rate": 0.05, "momentum": 0.8, "steps": 80}),
-    ("increase momentum", {"learning_rate": 0.03, "momentum": 0.9, "steps": 80}),
-    (
-        "combine higher rate and momentum",
-        {"learning_rate": 0.08, "momentum": 0.8, "steps": 80},
-    ),
-]
+BASELINE = {"learning_rate": 0.02, "momentum": 0.0, "steps": 80}
+
+
+@dataclass(frozen=True)
+class Axis:
+    name: str
+    step: float
+    minimum: float
+    maximum: float
+    integral: bool = False
+
+
+AXES = (
+    Axis("learning_rate", 0.03, 0.00001, 1.0),
+    Axis("momentum", 0.4, 0.0, 0.99),
+    Axis("steps", 40, 1, 500, integral=True),
+)
+
+
+class CoordinateSearch:
+    """Small adaptive search that advances only from measured improvements."""
+
+    def __init__(self, maximize: bool = False) -> None:
+        self.maximize = maximize
+        self.best_candidate = dict(BASELINE)
+        self.best_metric: float | None = None
+        self.axis_index = 0
+        self.direction = 1
+        self.scale = 1.0
+        self.reason = "establish the baseline"
+        self.pending: tuple[dict[str, Any], Axis | None] | None = None
+
+    def propose(self) -> tuple[str, dict[str, Any]]:
+        if self.pending is not None:
+            raise RuntimeError("observe the pending experiment before proposing another")
+        if self.best_metric is None:
+            candidate = dict(self.best_candidate)
+            self.pending = (candidate, None)
+            return self.reason, candidate
+
+        for _ in range(len(AXES) * 2):
+            axis = AXES[self.axis_index]
+            candidate = self.adjusted(axis)
+            if candidate != self.best_candidate:
+                action = "increase" if self.direction > 0 else "decrease"
+                hypothesis = f"{self.reason}; {action} {axis.name} from the current champion"
+                self.pending = (candidate, axis)
+                return hypothesis, candidate
+            self.reason = f"{axis.name} is at its boundary"
+            if self.direction > 0:
+                self.direction = -1
+            else:
+                self.advance_axis()
+        raise RuntimeError("adaptive search space is exhausted")
+
+    def observe(self, metric: float) -> bool:
+        if self.pending is None:
+            raise RuntimeError("cannot observe without a pending experiment")
+        if not math.isfinite(metric):
+            raise ValueError("observed metric must be finite")
+        candidate, axis = self.pending
+        self.pending = None
+
+        if self.best_metric is None:
+            self.best_candidate = candidate
+            self.best_metric = metric
+            self.reason = "baseline measured"
+            return True
+
+        advanced = improves(metric, self.best_metric, self.maximize)
+        if axis is None:
+            raise RuntimeError("non-baseline experiment has no search axis")
+        if advanced:
+            self.best_candidate = candidate
+            self.best_metric = metric
+            self.reason = f"{axis.name} improved the metric"
+            self.advance_axis()
+        elif self.direction > 0:
+            self.direction = -1
+            self.reason = f"increasing {axis.name} regressed"
+        else:
+            self.reason = f"neither direction for {axis.name} improved"
+            self.advance_axis()
+        return advanced
+
+    def adjusted(self, axis: Axis) -> dict[str, Any]:
+        delta = axis.step * self.scale * self.direction
+        value = float(self.best_candidate[axis.name]) + delta
+        value = min(axis.maximum, max(axis.minimum, value))
+        candidate = dict(self.best_candidate)
+        candidate[axis.name] = int(round(value)) if axis.integral else round(value, 8)
+        return candidate
+
+    def advance_axis(self) -> None:
+        self.axis_index = (self.axis_index + 1) % len(AXES)
+        self.direction = 1
+        if self.axis_index == 0:
+            self.scale /= 2
 
 
 def main() -> int:
     worker = required("OMR_WORKER_URL").rstrip("/")
     token = required("OMR_WORKER_TOKEN")
     max_runs = int(required("OMR_MAX_RUNS"))
+    maximize = os.environ.get("OMR_MAXIMIZE", "0") == "1"
     hourly_usd = float(os.environ.get("OMR_HOURLY_USD", "0"))
     if not math.isfinite(hourly_usd) or hourly_usd < 0:
         raise ValueError("OMR_HOURLY_USD must be a non-negative number")
@@ -46,7 +132,9 @@ def main() -> int:
     provider = f"Akash · {compute}" + (f" · {bid} uact/block" if bid else "")
     emit({"type": "campaign.started", "provider": provider})
 
-    for run, (hypothesis, candidate) in enumerate(CANDIDATES[:max_runs], start=1):
+    search = CoordinateSearch(maximize)
+    for run in range(1, max_runs + 1):
+        hypothesis, candidate = search.propose()
         candidate, candidate_sha256 = identify_candidate(candidate)
         emit(
             {
@@ -64,6 +152,7 @@ def main() -> int:
             raise RuntimeError("worker used a different evaluator")
         metric = number(result, "metric")
         seconds = number(result, "seconds")
+        search.observe(metric)
         emit(
             {
                 "type": "experiment.finished",

@@ -10,6 +10,13 @@ from typing import Any
 MAX_CANDIDATE_BYTES = 256 * 1024
 
 
+def improves(metric: float, incumbent: float | None, maximize: bool) -> bool:
+    """Return whether a measured metric advances the campaign."""
+    if incumbent is None:
+        return True
+    return metric > incumbent if maximize else metric < incumbent
+
+
 def identify_candidate(value: Any) -> tuple[dict[str, Any], str]:
     """Return a normalized JSON object and its SHA-256 digest."""
     if not isinstance(value, dict):
