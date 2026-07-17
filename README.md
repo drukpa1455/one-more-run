@@ -39,7 +39,8 @@ uv run omr doctor
 login. For unattended API-key operation, One More Run supplies the saved key
 only to each bounded `codex exec` invocation. The Akash credential is used only
 by the local deployment controller. Neither the Codex nor Akash credential
-reaches the remote worker.
+reaches the remote worker. Remote commands also require the Pomerium route and
+credentials described under [Run on Akash](#run-on-akash).
 
 Then run one command:
 
