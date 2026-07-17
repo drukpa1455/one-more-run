@@ -36,9 +36,7 @@ def evaluate(candidate: Path) -> dict[str, Any]:
     namespace = runpy.run_path(str(candidate / "train.py"), run_name="omr_candidate")
     train = namespace.get("train")
     if not callable(train):
-        raise ValueError(
-            "train.py must define train(inputs, targets, validation_inputs)"
-        )
+        raise ValueError("train.py must define train(inputs, targets, validation_inputs)")
 
     torch.manual_seed(7)
     started = time.monotonic()

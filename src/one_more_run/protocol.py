@@ -64,9 +64,6 @@ def safe_code_path(name: str) -> bool:
         and "\\" not in name
         and not path.is_absolute()
         and path.as_posix() == name
-        and all(
-            part not in {"", ".", ".."} and not part.startswith(".")
-            for part in path.parts
-        )
+        and all(part not in {"", ".", ".."} and not part.startswith(".") for part in path.parts)
         and path.suffix == ".py"
     )

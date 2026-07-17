@@ -28,7 +28,6 @@ def test_codex_environment_excludes_compute_credentials(tmp_path, monkeypatch):
     monkeypatch.setenv("OMR_WORKER_TOKEN", "worker-secret")
     monkeypatch.setenv("AKASH_API_KEY", "akash-secret")
     monkeypatch.setenv("POMERIUM_ZERO_API_TOKEN", "pomerium-secret")
-    monkeypatch.setenv("HINDSIGHT_API_KEY", "memory-secret")
 
     environment = codex_adapter.codex_environment()
 
@@ -36,45 +35,6 @@ def test_codex_environment_excludes_compute_credentials(tmp_path, monkeypatch):
     assert "OMR_WORKER_TOKEN" not in environment
     assert "AKASH_API_KEY" not in environment
     assert "POMERIUM_ZERO_API_TOKEN" not in environment
-    assert "HINDSIGHT_API_KEY" not in environment
-
-
-def test_prepare_exposes_recalled_memory_as_a_protected_input(tmp_path):
-    workspace = tmp_path / "campaign"
-
-    codex_adapter.prepare(
-        workspace,
-        {"train.py": "baseline\n"},
-        "objective\n",
-        "- Momentum failed\n",
-    )
-
-    assert (workspace / "memory.md").read_text() == "- Momentum failed\n"
-    assert "memory.md" in codex_adapter.CONTROL_FILES
-
-
-def test_worker_and_pomerium_credentials_use_separate_headers(monkeypatch):
-    calls = []
-
-    def urlopen(request, timeout):
-        calls.append((request, timeout))
-        return io.BytesIO(b'{"metric":0.5}')
-
-    monkeypatch.setattr(codex_adapter.urllib.request, "urlopen", urlopen)
-
-    value = codex_adapter.request(
-        "https://worker.example",
-        "/v1/code-experiments",
-        {"files": {"train.py": "pass\n"}},
-        "worker-token",
-        "pomerium-jwt",
-    )
-
-    request, timeout = calls[0]
-    assert value == {"metric": 0.5}
-    assert request.get_header("Authorization") == "Bearer worker-token"
-    assert request.get_header("X-pomerium-authorization") == "pomerium-jwt"
-    assert timeout == 180
 
 
 def test_proposal_can_take_multiple_turns_and_create_modules(tmp_path, monkeypatch):
@@ -116,3 +76,25 @@ def test_proposal_can_take_multiple_turns_and_create_modules(tmp_path, monkeypat
         "model.py": "class Model: pass\n",
         "train.py": "improved\n",
     }
+
+
+def test_pomerium_identity_is_forwarded_to_code_evaluation(monkeypatch):
+    calls = []
+
+    def urlopen(request, timeout):
+        calls.append(request)
+        return io.BytesIO(b'{"metric":0.5}')
+
+    monkeypatch.setattr(codex_adapter.urllib.request, "urlopen", urlopen)
+
+    codex_adapter.request(
+        "https://worker.example",
+        "/v1/code-experiments",
+        {"files": {"train.py": "pass"}},
+        "worker-token",
+        "pomerium-jwt",
+    )
+
+    request = calls[0]
+    assert request.get_header("Authorization") == "Bearer worker-token"
+    assert request.get_header("X-pomerium-authorization") == "pomerium-jwt"

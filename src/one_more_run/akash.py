@@ -13,6 +13,7 @@ import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 
 from rich.console import Console
@@ -55,15 +56,23 @@ class Bid:
     state: str
 
 
-def run(
-    args: argparse.Namespace, run_campaign: Callable[[argparse.Namespace], int]
-) -> int:
+@dataclass(frozen=True)
+class PomeriumRoute:
+    zero: ZeroAPI
+    cluster: Cluster
+    url: str
+    jwt: str
+    zero_token: str
+
+
+def run(args: argparse.Namespace, run_campaign: Callable[[argparse.Namespace], int]) -> int:
     """Deploy a worker, run a campaign, and close the deployment."""
+    protected = getattr(args, "pomerium", False)
     if not args.yes:
+        route = " and temporarily repoint a Pomerium Zero route" if protected else ""
         raise AkashError(
             f"deployment would deposit ${args.deposit:.2f}, accept at most "
-            f"{args.max_bid:g} uact/block, run for at most {args.timeout:g}s, "
-            "and temporarily point a Pomerium Zero cluster at its Akash IP; "
+            f"{args.max_bid:g} uact/block, and run for at most {args.timeout:g}s{route}; "
             "pass --yes to authorize it"
         )
     if args.deposit < MIN_DEPOSIT_USD:
@@ -81,49 +90,41 @@ def run(
     api_key = secret("AKASH_API_KEY")
     if not api_key:
         raise AkashError("run `omr setup` or set AKASH_API_KEY")
-    if not args.sdl.is_file():
-        raise AkashError(f"Akash SDL not found: {args.sdl}")
+    sdl_path = args.sdl or Path(
+        "deploy/akash-pomerium.yaml" if protected else "deploy/akash.yaml"
+    )
+    if not sdl_path.is_file():
+        raise AkashError(f"Akash SDL not found: {sdl_path}")
 
-    pomerium_environment = {
-        name: required_environment(name) for name in POMERIUM_ENVIRONMENT
-    }
-    route_url = pomerium_environment["POMERIUM_ROUTE_URL"].rstrip("/")
     deadline = time.monotonic() + args.timeout
-    zero = ZeroAPI(pomerium_environment["POMERIUM_ZERO_API_TOKEN"], deadline)
-    cluster = zero.cluster_for_route(route_url)
-    zero.validate_route(cluster, route_url)
+    protection = pomerium_route(deadline) if protected else None
     worker_token = secrets.token_urlsafe(32)
-    sdl = inject_secrets(
-        args.sdl.read_text(),
-        worker_token,
-        pomerium_environment["POMERIUM_ZERO_TOKEN"],
+    sdl = sdl_path.read_text()
+    sdl = (
+        inject_pomerium_secrets(sdl, worker_token, protection.zero_token)
+        if protection is not None
+        else inject_worker_token(sdl, worker_token)
     )
     client = ConsoleAPI(api_key, deadline=deadline)
     return orchestrate(
         client,
-        zero,
-        cluster,
         args,
         run_campaign,
         sdl,
-        route_url,
         worker_token,
-        pomerium_environment["POMERIUM_SERVICE_ACCOUNT_JWT"],
         deadline,
+        protection,
     )
 
 
 def orchestrate(
     client: ConsoleAPI,
-    zero: ZeroAPI,
-    cluster: Cluster,
     args: argparse.Namespace,
     run_campaign: Callable[[argparse.Namespace], int],
     sdl: str,
-    route_url: str,
     worker_token: str,
-    pomerium_jwt: str,
     deadline: float,
+    protection: PomeriumRoute | None = None,
 ) -> int:
     console = Console(stderr=True)
     deployment = client.create(sdl, args.deposit)
@@ -135,26 +136,25 @@ def orchestrate(
     failed = False
     assigned_ip = None
     try:
-        bid = wait_for_bid(
-            client, deployment.dseq, Decimal(str(args.max_bid)), deadline
-        )
+        bid = wait_for_bid(client, deployment.dseq, Decimal(str(args.max_bid)), deadline)
         console.print(
             f"Accepting [cyan]{format(bid.amount, 'f')} {bid.denom}/block[/cyan] "
             f"from {bid.provider}"
         )
         client.lease(deployment, bid)
-        leased_ip = wait_for_pomerium_ip(client, bid, deadline)
-        assigned_ip = leased_ip
-        zero.point_cluster(cluster, leased_ip)
-        wait_for_worker(
+        if protection:
+            assigned_ip = wait_for_pomerium_ip(client, bid, deadline)
+            protection.zero.point_cluster(protection.cluster, assigned_ip)
+        worker_url = wait_for_worker(
             client,
             bid,
-            route_url,
-            pomerium_jwt,
             deadline,
             getattr(args, "evaluator", EVALUATOR),
+            url=protection.url if protection else None,
+            jwt=protection.jwt if protection else None,
         )
-        console.print(f"Worker ready behind Pomerium at [cyan]{route_url}[/cyan]")
+        boundary = " behind Pomerium" if protection else ""
+        console.print(f"Worker ready{boundary} at [cyan]{worker_url}[/cyan]")
 
         campaign_args = argparse.Namespace(**vars(args))
         campaign_args.adapter = [
@@ -163,12 +163,13 @@ def orchestrate(
             getattr(args, "adapter_module", "one_more_run.akash_adapter"),
         ]
         campaign_args.environment = {
-            "OMR_WORKER_URL": route_url,
+            "OMR_WORKER_URL": worker_url,
             "OMR_WORKER_TOKEN": worker_token,
-            "OMR_POMERIUM_JWT": pomerium_jwt,
             "OMR_BID_UACT": str(bid.amount),
             **getattr(args, "adapter_environment", {}),
         }
+        if protection:
+            campaign_args.environment["OMR_POMERIUM_JWT"] = protection.jwt
         campaign_args.drop_environment = ["AKASH_API_KEY", *POMERIUM_ENVIRONMENT]
         campaign_args.timeout = remaining(deadline, "campaign")
         return run_campaign(campaign_args)
@@ -185,14 +186,14 @@ def orchestrate(
                 console.print(f"[red]deployment cleanup failed:[/red] {error}")
             else:
                 cleanup_error = error
-        if assigned_ip:
+        if protection and assigned_ip:
             try:
-                zero.restore_cluster(
-                    cluster,
+                protection.zero.restore_cluster(
+                    protection.cluster,
                     assigned_ip,
                     time.monotonic() + 30,
                 )
-                console.print("Pomerium cluster route restored")
+                console.print("Pomerium route restored")
             except Exception as error:
                 if failed or cleanup_error:
                     console.print(f"[red]Pomerium cleanup failed:[/red] {error}")
@@ -264,11 +265,7 @@ class ConsoleAPI:
         payload: Any = None,
         timeout: float | None = None,
     ) -> Any:
-        body = (
-            None
-            if payload is None
-            else json.dumps(payload, separators=(",", ":")).encode()
-        )
+        body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
         headers = {"User-Agent": "one-more-run/0.1", "x-api-key": self.api_key}
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -294,9 +291,7 @@ class ConsoleAPI:
         return value["data"]
 
 
-def wait_for_bid(
-    client: ConsoleAPI, dseq: str, max_bid: Decimal, deadline: float
-) -> Bid:
+def wait_for_bid(client: ConsoleAPI, dseq: str, max_bid: Decimal, deadline: float) -> Bid:
     while True:
         eligible = [
             bid
@@ -308,38 +303,40 @@ def wait_for_bid(
         pause(deadline, "an eligible bid")
 
 
-def wait_for_pomerium_ip(client: ConsoleAPI, bid: Bid, deadline: float) -> str:
-    while True:
-        ip = pomerium_ip(client.deployment(bid.dseq), bid)
-        if ip:
-            return ip
-        pause(deadline, "the Pomerium IP lease")
-
-
 def wait_for_worker(
     client: ConsoleAPI,
     bid: Bid,
-    route_url: str,
-    pomerium_jwt: str,
     deadline: float,
     evaluator: str = EVALUATOR,
-) -> None:
+    *,
+    url: str | None = None,
+    jwt: str | None = None,
+) -> str:
     while True:
-        lease_status(client.deployment(bid.dseq), bid)
-        health = worker_health(route_url, pomerium_jwt, deadline)
-        if health is not None:
-            evaluators = health.get("evaluators")
-            supported = (
-                evaluator in evaluators
-                if isinstance(evaluators, list)
-                else health.get("evaluator") == evaluator
+        deployment = client.deployment(bid.dseq)
+        if url:
+            uri = url if lease_status(deployment, bid) is not None else None
+        else:
+            uri = worker_uri(deployment, bid)
+        if uri:
+            health = (
+                worker_health(uri, deadline, jwt)
+                if jwt
+                else worker_health(uri, deadline)
             )
-            if not supported:
-                raise AkashError("worker reported an unexpected evaluator")
-            if health.get("device") != "cuda":
-                raise AkashError("Akash worker has no CUDA device")
-            return
-        pause(deadline, "the Pomerium-protected GPU worker")
+            if health is not None:
+                evaluators = health.get("evaluators")
+                supported = (
+                    evaluator in evaluators
+                    if isinstance(evaluators, list)
+                    else health.get("evaluator") == evaluator
+                )
+                if not supported:
+                    raise AkashError("worker reported an unexpected evaluator")
+                if health.get("device") != "cuda":
+                    raise AkashError("Akash worker has no CUDA device")
+                return uri
+        pause(deadline, "the GPU worker")
 
 
 def lease_status(deployment: dict[str, Any], bid: Bid) -> dict[str, Any] | None:
@@ -366,55 +363,61 @@ def lease_status(deployment: dict[str, Any], bid: Bid) -> dict[str, Any] | None:
     return None
 
 
-def pomerium_ip(deployment: dict[str, Any], bid: Bid) -> str | None:
+def worker_uri(deployment: dict[str, Any], bid: Bid) -> str | None:
     status = lease_status(deployment, bid)
     if status is None:
         return None
-    ips = status.get("ips")
-    entries = ips.get("pomerium") if isinstance(ips, dict) else None
-    if not entries:
+    services = status.get("services")
+    worker = services.get("worker") if isinstance(services, dict) else None
+    uris = worker.get("uris") if isinstance(worker, dict) else None
+    if not isinstance(uris, list) or not uris or not isinstance(uris[0], str):
         return None
-    if not isinstance(entries, list) or not isinstance(entries[0], dict):
-        raise AkashError("Akash Pomerium IP lease must be a list of objects")
-    endpoint = entries[0]
-    protocol = endpoint.get("Protocol")
-    if (
-        endpoint.get("Port") != 443
-        or not isinstance(protocol, str)
-        or protocol.lower() != "tcp"
-    ):
-        raise AkashError("Akash assigned an unexpected Pomerium endpoint")
-    return text(endpoint, "IP")
+    return normalize_uri(uris[0])
+
+
+def wait_for_pomerium_ip(client: ConsoleAPI, bid: Bid, deadline: float) -> str:
+    while True:
+        status = lease_status(client.deployment(bid.dseq), bid)
+        ips = status.get("ips") if status else None
+        endpoints = ips.get("pomerium") if isinstance(ips, dict) else None
+        if endpoints:
+            if not isinstance(endpoints, list) or not isinstance(endpoints[0], dict):
+                raise AkashError("Akash Pomerium IP lease must be a list of objects")
+            endpoint = endpoints[0]
+            protocol = endpoint.get("Protocol")
+            if (
+                endpoint.get("Port") != 443
+                or not isinstance(protocol, str)
+                or protocol.lower() != "tcp"
+            ):
+                raise AkashError("Akash assigned an unexpected Pomerium endpoint")
+            return text(endpoint, "IP")
+        pause(deadline, "the Pomerium IP lease")
 
 
 def worker_health(
     uri: str,
-    pomerium_jwt: str,
     deadline: float,
+    jwt: str | None = None,
 ) -> dict[str, Any] | None:
-    request = urllib.request.Request(
-        uri + "/healthz",
-        headers={
-            "User-Agent": "one-more-run/0.1",
-            "X-Pomerium-Authorization": pomerium_jwt,
-        },
-    )
+    headers = {"User-Agent": "one-more-run/0.1"}
+    if jwt:
+        headers["X-Pomerium-Authorization"] = jwt
+    request = urllib.request.Request(uri + "/healthz", headers=headers)
     try:
-        with urllib.request.urlopen(
-            request, timeout=min(10, remaining(deadline, "worker health"))
-        ) as response:
+        with urllib.request.urlopen(request, timeout=min(10, remaining(deadline, "worker health"))) as response:
             value = json.load(response)
     except (OSError, ValueError):
         return None
     return value if isinstance(value, dict) else None
 
 
-def inject_secrets(sdl: str, worker_token: str, zero_token: str) -> str:
-    sdl = inject_environment(
-        sdl,
-        "worker",
-        {"OMR_WORKER_TOKEN": worker_token},
-    )
+def inject_worker_token(sdl: str, token: str) -> str:
+    return inject_environment(sdl, "worker", {"OMR_WORKER_TOKEN": token})
+
+
+def inject_pomerium_secrets(sdl: str, worker_token: str, zero_token: str) -> str:
+    sdl = inject_worker_token(sdl, worker_token)
     return inject_environment(
         sdl,
         "pomerium",
@@ -468,6 +471,21 @@ def inject_environment(sdl: str, service: str, environment: dict[str, str]) -> s
     return "\n".join(lines) + ("\n" if sdl.endswith("\n") else "")
 
 
+def pomerium_route(deadline: float) -> PomeriumRoute:
+    values = {name: required_environment(name) for name in POMERIUM_ENVIRONMENT}
+    url = values["POMERIUM_ROUTE_URL"].rstrip("/")
+    zero = ZeroAPI(values["POMERIUM_ZERO_API_TOKEN"], deadline)
+    cluster = zero.cluster_for_route(url)
+    zero.validate_route(cluster, url)
+    return PomeriumRoute(
+        zero=zero,
+        cluster=cluster,
+        url=url,
+        jwt=values["POMERIUM_SERVICE_ACCOUNT_JWT"],
+        zero_token=values["POMERIUM_ZERO_TOKEN"],
+    )
+
+
 def bid_from_response(value: Any, expected_dseq: str) -> Bid:
     if not isinstance(value, dict) or not isinstance(value.get("bid"), dict):
         raise AkashError("Akash bid must be an object")
@@ -505,6 +523,11 @@ def api_error(error: urllib.error.HTTPError) -> str:
     except (OSError, ValueError):
         pass
     return f"Akash API returned HTTP {error.code}: {message}"
+
+
+def normalize_uri(uri: str) -> str:
+    uri = uri.rstrip("/")
+    return uri if uri.startswith(("http://", "https://")) else f"https://{uri}"
 
 
 def pause(deadline: float, target: str) -> None:
