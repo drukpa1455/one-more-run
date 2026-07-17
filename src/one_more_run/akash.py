@@ -17,7 +17,6 @@ from typing import Any
 
 from rich.console import Console
 
-from one_more_run.pomerium import Cluster, ZeroAPI
 from one_more_run.protocol import NUMERIC_EVALUATOR
 from one_more_run.settings import secret
 
@@ -26,12 +25,6 @@ API_URL = "https://console-api.akash.network"
 MIN_DEPOSIT_USD = 0.5
 POLL_SECONDS = 3.0
 EVALUATOR = NUMERIC_EVALUATOR
-POMERIUM_ENVIRONMENT = (
-    "POMERIUM_ZERO_TOKEN",
-    "POMERIUM_ZERO_API_TOKEN",
-    "POMERIUM_ROUTE_URL",
-    "POMERIUM_SERVICE_ACCOUNT_JWT",
-)
 
 
 class AkashError(ValueError):
@@ -55,15 +48,12 @@ class Bid:
     state: str
 
 
-def run(
-    args: argparse.Namespace, run_campaign: Callable[[argparse.Namespace], int]
-) -> int:
+def run(args: argparse.Namespace, run_campaign: Callable[[argparse.Namespace], int]) -> int:
     """Deploy a worker, run a campaign, and close the deployment."""
     if not args.yes:
         raise AkashError(
             f"deployment would deposit ${args.deposit:.2f}, accept at most "
-            f"{args.max_bid:g} uact/block, run for at most {args.timeout:g}s, "
-            "and temporarily point a Pomerium Zero cluster at its Akash IP; "
+            f"{args.max_bid:g} uact/block, and run for at most {args.timeout:g}s; "
             "pass --yes to authorize it"
         )
     if args.deposit < MIN_DEPOSIT_USD:
@@ -84,45 +74,19 @@ def run(
     if not args.sdl.is_file():
         raise AkashError(f"Akash SDL not found: {args.sdl}")
 
-    pomerium_environment = {
-        name: required_environment(name) for name in POMERIUM_ENVIRONMENT
-    }
-    route_url = pomerium_environment["POMERIUM_ROUTE_URL"].rstrip("/")
     deadline = time.monotonic() + args.timeout
-    zero = ZeroAPI(pomerium_environment["POMERIUM_ZERO_API_TOKEN"], deadline)
-    cluster = zero.cluster_for_route(route_url)
-    zero.validate_route(cluster, route_url)
     worker_token = secrets.token_urlsafe(32)
-    sdl = inject_secrets(
-        args.sdl.read_text(),
-        worker_token,
-        pomerium_environment["POMERIUM_ZERO_TOKEN"],
-    )
+    sdl = inject_worker_token(args.sdl.read_text(), worker_token)
     client = ConsoleAPI(api_key, deadline=deadline)
-    return orchestrate(
-        client,
-        zero,
-        cluster,
-        args,
-        run_campaign,
-        sdl,
-        route_url,
-        worker_token,
-        pomerium_environment["POMERIUM_SERVICE_ACCOUNT_JWT"],
-        deadline,
-    )
+    return orchestrate(client, args, run_campaign, sdl, worker_token, deadline)
 
 
 def orchestrate(
     client: ConsoleAPI,
-    zero: ZeroAPI,
-    cluster: Cluster,
     args: argparse.Namespace,
     run_campaign: Callable[[argparse.Namespace], int],
     sdl: str,
-    route_url: str,
     worker_token: str,
-    pomerium_jwt: str,
     deadline: float,
 ) -> int:
     console = Console(stderr=True)
@@ -133,28 +97,20 @@ def orchestrate(
     )
 
     failed = False
-    assigned_ip = None
     try:
-        bid = wait_for_bid(
-            client, deployment.dseq, Decimal(str(args.max_bid)), deadline
-        )
+        bid = wait_for_bid(client, deployment.dseq, Decimal(str(args.max_bid)), deadline)
         console.print(
             f"Accepting [cyan]{format(bid.amount, 'f')} {bid.denom}/block[/cyan] "
             f"from {bid.provider}"
         )
         client.lease(deployment, bid)
-        leased_ip = wait_for_pomerium_ip(client, bid, deadline)
-        assigned_ip = leased_ip
-        zero.point_cluster(cluster, leased_ip)
-        wait_for_worker(
+        worker_url = wait_for_worker(
             client,
             bid,
-            route_url,
-            pomerium_jwt,
             deadline,
             getattr(args, "evaluator", EVALUATOR),
         )
-        console.print(f"Worker ready behind Pomerium at [cyan]{route_url}[/cyan]")
+        console.print(f"Worker ready at [cyan]{worker_url}[/cyan]")
 
         campaign_args = argparse.Namespace(**vars(args))
         campaign_args.adapter = [
@@ -163,20 +119,18 @@ def orchestrate(
             getattr(args, "adapter_module", "one_more_run.akash_adapter"),
         ]
         campaign_args.environment = {
-            "OMR_WORKER_URL": route_url,
+            "OMR_WORKER_URL": worker_url,
             "OMR_WORKER_TOKEN": worker_token,
-            "OMR_POMERIUM_JWT": pomerium_jwt,
             "OMR_BID_UACT": str(bid.amount),
             **getattr(args, "adapter_environment", {}),
         }
-        campaign_args.drop_environment = ["AKASH_API_KEY", *POMERIUM_ENVIRONMENT]
+        campaign_args.drop_environment = ["AKASH_API_KEY"]
         campaign_args.timeout = remaining(deadline, "campaign")
         return run_campaign(campaign_args)
     except BaseException:
         failed = True
         raise
     finally:
-        cleanup_error = None
         try:
             client.close(deployment.dseq)
             console.print(f"Akash deployment [cyan]{deployment.dseq}[/cyan] closed")
@@ -184,22 +138,7 @@ def orchestrate(
             if failed:
                 console.print(f"[red]deployment cleanup failed:[/red] {error}")
             else:
-                cleanup_error = error
-        if assigned_ip:
-            try:
-                zero.restore_cluster(
-                    cluster,
-                    assigned_ip,
-                    time.monotonic() + 30,
-                )
-                console.print("Pomerium cluster route restored")
-            except Exception as error:
-                if failed or cleanup_error:
-                    console.print(f"[red]Pomerium cleanup failed:[/red] {error}")
-                else:
-                    cleanup_error = error
-        if cleanup_error:
-            raise cleanup_error
+                raise
 
 
 class ConsoleAPI:
@@ -264,11 +203,7 @@ class ConsoleAPI:
         payload: Any = None,
         timeout: float | None = None,
     ) -> Any:
-        body = (
-            None
-            if payload is None
-            else json.dumps(payload, separators=(",", ":")).encode()
-        )
+        body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
         headers = {"User-Agent": "one-more-run/0.1", "x-api-key": self.api_key}
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -294,9 +229,7 @@ class ConsoleAPI:
         return value["data"]
 
 
-def wait_for_bid(
-    client: ConsoleAPI, dseq: str, max_bid: Decimal, deadline: float
-) -> Bid:
+def wait_for_bid(client: ConsoleAPI, dseq: str, max_bid: Decimal, deadline: float) -> Bid:
     while True:
         eligible = [
             bid
@@ -308,41 +241,32 @@ def wait_for_bid(
         pause(deadline, "an eligible bid")
 
 
-def wait_for_pomerium_ip(client: ConsoleAPI, bid: Bid, deadline: float) -> str:
-    while True:
-        ip = pomerium_ip(client.deployment(bid.dseq), bid)
-        if ip:
-            return ip
-        pause(deadline, "the Pomerium IP lease")
-
-
 def wait_for_worker(
     client: ConsoleAPI,
     bid: Bid,
-    route_url: str,
-    pomerium_jwt: str,
     deadline: float,
     evaluator: str = EVALUATOR,
-) -> None:
+) -> str:
     while True:
-        lease_status(client.deployment(bid.dseq), bid)
-        health = worker_health(route_url, pomerium_jwt, deadline)
-        if health is not None:
-            evaluators = health.get("evaluators")
-            supported = (
-                evaluator in evaluators
-                if isinstance(evaluators, list)
-                else health.get("evaluator") == evaluator
-            )
-            if not supported:
-                raise AkashError("worker reported an unexpected evaluator")
-            if health.get("device") != "cuda":
-                raise AkashError("Akash worker has no CUDA device")
-            return
-        pause(deadline, "the Pomerium-protected GPU worker")
+        uri = worker_uri(client.deployment(bid.dseq), bid)
+        if uri:
+            health = worker_health(uri, deadline)
+            if health is not None:
+                evaluators = health.get("evaluators")
+                supported = (
+                    evaluator in evaluators
+                    if isinstance(evaluators, list)
+                    else health.get("evaluator") == evaluator
+                )
+                if not supported:
+                    raise AkashError("worker reported an unexpected evaluator")
+                if health.get("device") != "cuda":
+                    raise AkashError("Akash worker has no CUDA device")
+                return uri
+        pause(deadline, "the GPU worker")
 
 
-def lease_status(deployment: dict[str, Any], bid: Bid) -> dict[str, Any] | None:
+def worker_uri(deployment: dict[str, Any], bid: Bid) -> str | None:
     leases = deployment.get("leases")
     if not isinstance(leases, list):
         raise AkashError("Akash deployment leases must be a list")
@@ -362,109 +286,55 @@ def lease_status(deployment: dict[str, Any], bid: Bid) -> dict[str, Any] | None:
         status = lease.get("status")
         if not isinstance(status, dict):
             return None
-        return status
+        services = status.get("services")
+        worker = services.get("worker") if isinstance(services, dict) else None
+        uris = worker.get("uris") if isinstance(worker, dict) else None
+        if not isinstance(uris, list) or not uris or not isinstance(uris[0], str):
+            return None
+        return normalize_uri(uris[0])
     return None
 
 
-def pomerium_ip(deployment: dict[str, Any], bid: Bid) -> str | None:
-    status = lease_status(deployment, bid)
-    if status is None:
-        return None
-    ips = status.get("ips")
-    entries = ips.get("pomerium") if isinstance(ips, dict) else None
-    if not entries:
-        return None
-    if not isinstance(entries, list) or not isinstance(entries[0], dict):
-        raise AkashError("Akash Pomerium IP lease must be a list of objects")
-    endpoint = entries[0]
-    protocol = endpoint.get("Protocol")
-    if (
-        endpoint.get("Port") != 443
-        or not isinstance(protocol, str)
-        or protocol.lower() != "tcp"
-    ):
-        raise AkashError("Akash assigned an unexpected Pomerium endpoint")
-    return text(endpoint, "IP")
-
-
-def worker_health(
-    uri: str,
-    pomerium_jwt: str,
-    deadline: float,
-) -> dict[str, Any] | None:
-    request = urllib.request.Request(
-        uri + "/healthz",
-        headers={
-            "User-Agent": "one-more-run/0.1",
-            "X-Pomerium-Authorization": pomerium_jwt,
-        },
-    )
+def worker_health(uri: str, deadline: float) -> dict[str, Any] | None:
+    request = urllib.request.Request(uri + "/healthz", headers={"User-Agent": "one-more-run/0.1"})
     try:
-        with urllib.request.urlopen(
-            request, timeout=min(10, remaining(deadline, "worker health"))
-        ) as response:
+        with urllib.request.urlopen(request, timeout=min(10, remaining(deadline, "worker health"))) as response:
             value = json.load(response)
     except (OSError, ValueError):
         return None
     return value if isinstance(value, dict) else None
 
 
-def inject_secrets(sdl: str, worker_token: str, zero_token: str) -> str:
-    sdl = inject_environment(
-        sdl,
-        "worker",
-        {"OMR_WORKER_TOKEN": worker_token},
-    )
-    return inject_environment(
-        sdl,
-        "pomerium",
-        {
-            "POMERIUM_ZERO_TOKEN": zero_token,
-            "TMPDIR": "/tmp/pomerium",
-            "XDG_CACHE_HOME": "/tmp/pomerium/cache",
-            "XDG_DATA_HOME": "/tmp/pomerium/cache",
-        },
-    )
-
-
-def inject_environment(sdl: str, service: str, environment: dict[str, str]) -> str:
-    for name, value in environment.items():
-        if not value or any(character in value for character in "\r\n"):
-            raise AkashError(f"{name} contains unsupported characters")
-        if f"{name}=" in sdl:
-            raise AkashError(f"SDL already defines {name}")
+def inject_worker_token(sdl: str, token: str) -> str:
+    if not token or any(character in token for character in "\r\n="):
+        raise AkashError("worker token contains unsupported characters")
+    if "OMR_WORKER_TOKEN=" in sdl:
+        raise AkashError("SDL already defines OMR_WORKER_TOKEN")
     lines = sdl.splitlines()
     try:
-        services = lines.index("services:")
-        services_end = next(
-            (
-                index
-                for index in range(services + 1, len(lines))
-                if lines[index].strip() and not lines[index].startswith(" ")
-            ),
-            len(lines),
-        )
-        owner = lines.index(f"  {service}:", services + 1, services_end)
+        worker = lines.index("  worker:")
         end = next(
             (
                 index
-                for index in range(owner + 1, services_end)
+                for index in range(worker + 1, len(lines))
                 if lines[index].strip()
                 and len(lines[index]) - len(lines[index].lstrip()) <= 2
             ),
-            services_end,
+            len(lines),
         )
         image = next(
             index
-            for index in range(owner + 1, end)
+            for index in range(worker + 1, end)
             if lines[index].startswith("    image:")
         )
     except (StopIteration, ValueError) as error:
-        raise AkashError(f"SDL must define services.{service}.image") from error
-    if any(line.startswith("    env:") for line in lines[owner + 1 : end]):
-        raise AkashError(f"services.{service}.env must be owned by the Akash runner")
-    values = [f"      - {name}={value}" for name, value in environment.items()]
-    lines[image + 1 : image + 1] = ["    env:", *values]
+        raise AkashError("SDL must define services.worker.image") from error
+    if any(line.startswith("    env:") for line in lines[worker + 1 : end]):
+        raise AkashError("services.worker.env must be owned by the Akash runner")
+    lines[image + 1 : image + 1] = [
+        "    env:",
+        f"      - OMR_WORKER_TOKEN={token}",
+    ]
     return "\n".join(lines) + ("\n" if sdl.endswith("\n") else "")
 
 
@@ -507,6 +377,11 @@ def api_error(error: urllib.error.HTTPError) -> str:
     return f"Akash API returned HTTP {error.code}: {message}"
 
 
+def normalize_uri(uri: str) -> str:
+    uri = uri.rstrip("/")
+    return uri if uri.startswith(("http://", "https://")) else f"https://{uri}"
+
+
 def pause(deadline: float, target: str) -> None:
     time.sleep(min(POLL_SECONDS, remaining(deadline, target)))
 
@@ -530,12 +405,3 @@ def positive_int(value: dict[str, Any], name: str) -> int:
     if not isinstance(item, int) or isinstance(item, bool) or item < 1:
         raise AkashError(f"Akash {name} must be a positive integer")
     return item
-
-
-def required_environment(name: str) -> str:
-    value = os.environ.get(name)
-    if not value:
-        raise AkashError(f"set {name} in the environment")
-    if any(character in value for character in "\r\n"):
-        raise AkashError(f"{name} contains unsupported characters")
-    return value

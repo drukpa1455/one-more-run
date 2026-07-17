@@ -1,6 +1,3 @@
 [submodule "autoresearch"]
 	path = autoresearch
 	url = https://github.com/karpathy/autoresearch.git
-[submodule "pomerium"]
-	path = pomerium
-	url = https://github.com/pomerium/pomerium.git

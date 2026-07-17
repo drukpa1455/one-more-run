@@ -2,7 +2,6 @@
 
 import json
 import os
-import sys
 
 from one_more_run.akash_adapter import CoordinateSearch
 from one_more_run.protocol import identify_candidate
@@ -15,9 +14,6 @@ def emit(event: dict) -> None:
 
 device = device_info()
 provider = f"local · {device['gpu'] or device['device']}"
-memory = os.environ.get("OMR_MEMORY", "").strip()
-if memory:
-    print(f"recalled research memory:\n{memory}", file=sys.stderr, flush=True)
 emit({"type": "campaign.started", "provider": provider})
 search = CoordinateSearch(os.environ.get("OMR_MAXIMIZE", "0") == "1")
 for run in range(1, int(os.environ["OMR_MAX_RUNS"]) + 1):

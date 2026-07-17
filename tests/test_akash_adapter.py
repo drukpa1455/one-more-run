@@ -1,9 +1,5 @@
-import io
-import json
-
 import pytest
 
-from one_more_run import akash_adapter
 from one_more_run.akash_adapter import BASELINE, CoordinateSearch
 
 
@@ -68,28 +64,3 @@ def test_search_rejects_a_nonfinite_measurement():
 
     with pytest.raises(ValueError, match="finite"):
         search.observe(float("nan"))
-
-
-def test_worker_and_pomerium_credentials_use_separate_headers(monkeypatch):
-    calls = []
-
-    def urlopen(request, timeout):
-        calls.append((request, timeout))
-        return io.BytesIO(b'{"metric":0.5}')
-
-    monkeypatch.setattr(akash_adapter.urllib.request, "urlopen", urlopen)
-
-    value = akash_adapter.request(
-        "https://worker.example",
-        "/v1/experiments",
-        {"steps": 80},
-        "worker-token",
-        "pomerium-jwt",
-    )
-
-    request, timeout = calls[0]
-    assert value == {"metric": 0.5}
-    assert json.loads(request.data) == {"steps": 80}
-    assert request.get_header("Authorization") == "Bearer worker-token"
-    assert request.get_header("X-pomerium-authorization") == "pomerium-jwt"
-    assert timeout == 180

@@ -1,24 +1,13 @@
 version: "2.0"
 
-endpoints:
-  pomerium:
-    kind: ip
-
 services:
   worker:
     image: ghcr.io/drukpa1455/one-more-run-worker@sha256:0f0f0369a0e7f86c46362ec33d750320cfd4f2cbdedddcde9ae00efc0f2db9d8
     expose:
       - port: 8080
-        to:
-          - service: pomerium
-  pomerium:
-    image: pomerium/pomerium@sha256:e10d1d267af24f581157f485d9b0bc08469e2428675b696a08e42ceb09b2279c
-    expose:
-      - port: 443
-        as: 443
+        as: 80
         to:
           - global: true
-            ip: pomerium
 
 profiles:
   compute:
@@ -39,21 +28,10 @@ profiles:
                 - model: rtx6000
                 - model: v100
                 - model: t4
-    pomerium:
-      resources:
-        cpu:
-          units: 1
-        memory:
-          size: 1Gi
-        storage:
-          - size: 1Gi
   placement:
     akash:
       pricing:
         worker:
-          denom: uact
-          amount: 1000
-        pomerium:
           denom: uact
           amount: 1000
 
@@ -61,8 +39,4 @@ deployment:
   worker:
     akash:
       profile: worker
-      count: 1
-  pomerium:
-    akash:
-      profile: pomerium
       count: 1
