@@ -8,6 +8,7 @@ import pytest
 
 from one_more_run import akash
 from one_more_run.akash import Bid, ConsoleAPI, Deployment
+from one_more_run.protocol import CODE_EVALUATOR
 
 
 class FakeConsole:
@@ -140,6 +141,41 @@ def test_orchestrate_closes_when_campaign_fails(monkeypatch):
             time.monotonic() + 60,
         )
 
+    assert client.closed == ["123"]
+
+
+def test_orchestrate_selects_the_code_research_adapter(monkeypatch):
+    client = FakeConsole()
+    args = arguments()
+    args.evaluator = CODE_EVALUATOR
+    args.adapter_module = "one_more_run.codex_adapter"
+    args.adapter_environment = {"OMR_CANDIDATE": "/candidate.py"}
+    monkeypatch.setattr(
+        akash,
+        "worker_health",
+        lambda uri, deadline: {
+            "evaluator": akash.EVALUATOR,
+            "evaluators": [akash.EVALUATOR, CODE_EVALUATOR],
+            "device": "cuda",
+        },
+    )
+
+    def campaign(campaign_args):
+        assert campaign_args.adapter[-1] == "one_more_run.codex_adapter"
+        assert campaign_args.environment["OMR_CANDIDATE"] == "/candidate.py"
+        return 0
+
+    assert (
+        akash.orchestrate(
+            client,
+            args,
+            campaign,
+            "rendered sdl",
+            "worker-token",
+            time.monotonic() + 60,
+        )
+        == 0
+    )
     assert client.closed == ["123"]
 
 

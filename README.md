@@ -2,21 +2,21 @@
 
 **Autoresearch on any compute.**
 
-One More Run is a small control plane for bounded, autonomous ML research. A
-research agent proposes an experiment, a compute adapter evaluates it, and One
-More Run keeps only measured improvements.
+One More Run is a small control plane for bounded, autonomous ML research.
+Codex rewrites a complete training program, an isolated Akash GPU worker
+evaluates it against hidden fixed data, and One More Run keeps only measured
+improvements.
 
 ```text
-research agent
+Codex: edit candidate/
       │
       ▼
   One More Run ── experiment ledger ── live terminal
       │
       ▼
-compute adapter
-  ├─ local
-  ├─ Akash
-  └─ any future cloud
+Akash GPU: fixed evaluator
+      │
+      └─ metric + source/evaluator receipt
 ```
 
 The core does not know how a GPU is provisioned. An adapter emits a tiny JSONL
@@ -24,7 +24,42 @@ event protocol; the CLI enforces the run and time budgets, verifies that each
 measurement matches its proposed candidate and evaluator, records durable
 results, and renders the campaign.
 
-## Try the vertical slice
+## Run the code-evolution loop
+
+Configure credentials without putting them in shell history or the repository:
+
+```bash
+uv sync
+uv run omr setup
+uv run omr doctor
+```
+
+`CODEX_API_KEY` is optional when the installed Codex CLI already has a saved
+login. For unattended API-key operation, One More Run supplies the saved key
+only to each bounded `codex exec` invocation. The Akash credential is used only
+by the local deployment controller. Neither the Codex nor Akash credential
+reaches the remote worker.
+
+Then run one command:
+
+```bash
+uv run omr research research.md --yes
+```
+
+The first experiment measures the modular
+[examples/code_candidate](examples/code_candidate) workspace. Before every
+later experiment, bounded fresh Codex turns read the objective and measured
+history, edit that workspace, and explicitly report when the candidate is ready
+for expensive evaluation. The worker then evaluates the complete source bundle
+against hidden deterministic data. Improvement advances the champion; a crash
+or regression restores the previous bundle. The champion and history remain in
+`.omr/autoresearch/`, while verified receipts remain in `experiments.jsonl`.
+
+Codex may split modules and change feature construction, architecture, loss,
+optimizer, schedule, and training algorithm. It cannot change the evaluator or
+hidden validation targets.
+
+## Try the numeric loop locally
 
 Clone the submodule and run the deterministic adapter:
 
@@ -64,13 +99,14 @@ current measured champion. An improvement advances the champion; a regression
 reverses that coordinate before the search moves on. The authenticated evaluator
 and workload stay fixed; only the bounded candidate crosses the boundary.
 
-The `autoresearch` submodule supplies the initial research workload.
+The `autoresearch` submodule is the reference workload. The included nonlinear
+regression task is intentionally small enough for a hackathon demo; adapters for
+that full workload and AcquaTerra can reuse the same edit/evaluate/keep contract.
 
 ## Run on Akash
 
-The end user supplies one Console API credential. The agent-driven CLI owns the
-rest of the deployment lifecycle. Load `AKASH_API_KEY` from a secret manager,
-then run:
+The end user supplies credentials once through `omr setup`. The agent-driven CLI
+owns the rest of the deployment lifecycle. The original numeric smoke path is:
 
 ```bash
 uv run omr akash research.md --yes
@@ -90,19 +126,21 @@ and time limits. Keep `AKASH_API_KEY` in a secret manager, never commit it, and
 rotate it after a temporary test. Console API keys grant full account access.
 See the [Managed Wallet API documentation](https://akash.network/docs/api-documentation/console-api/getting-started/).
 
-The current worker accepts exactly three bounded numeric parameters; it cannot
-execute submitted code. It serializes experiments, rejects oversized requests,
-and returns a receipt identifying the normalized candidate and fixed evaluator.
-Editable source evaluation and Pomerium protection are subsequent milestones,
-not current behavior. The SDL accepts several trial-eligible NVIDIA models.
+The worker supports both the original three-parameter smoke evaluator and the
+code evaluator. Code experiments run one at a time in a child process with a
+fixed hidden dataset, a hard timeout, a bounded source payload, and a scrubbed
+environment that excludes controller credentials and the worker bearer token.
+Every response binds the exact source hash to the evaluator identity. The SDL accepts several
+trial-eligible NVIDIA models.
 
 The worker image is published to GHCR from pinned GitHub Actions, and the Akash
 SDL pins its immutable OCI digest.
 
 ## Hackathon target
 
-- Adaptive AutoML search driven by the previous measured result.
-- Authenticated Akash GPU evaluator with a fixed workload.
+- Codex code evolution driven by previous measured results.
+- Whole-program architecture, loss, optimizer, and training-loop experiments.
+- Credential-separated Akash GPU evaluation with fixed hidden data.
 - Fixed evaluation and bounded runs, time, and spend.
 - Live results with hypotheses, metrics, decisions, duration, and cost.
 - A content-addressed winning candidate and replayable `experiments.jsonl`.

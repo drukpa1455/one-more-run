@@ -5,6 +5,7 @@ import json
 import math
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -19,7 +20,12 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from one_more_run.protocol import identify_candidate, improves
+from one_more_run.protocol import (
+    CODE_EVALUATOR,
+    NUMERIC_EVALUATOR,
+    identify_candidate,
+    improves,
+)
 
 
 class ProtocolError(ValueError):
@@ -144,8 +150,25 @@ def main(argv: list[str] | None = None) -> int:
             from one_more_run.akash import run as run_on_akash
 
             return run_on_akash(args, run)
+        if args.command_name == "research":
+            from one_more_run.akash import run as run_on_akash
+
+            args.adapter_environment = {
+                "OMR_CANDIDATE": str(args.candidate.resolve()),
+                "OMR_WORKSPACE": str(args.workspace.resolve()),
+                "OMR_CODEX_TIMEOUT": str(args.codex_timeout),
+                "OMR_PROPOSAL_TURNS": str(args.proposal_turns),
+            }
+            if args.model:
+                args.adapter_environment["OMR_CODEX_MODEL"] = args.model
+            args.required_files = [args.candidate]
+            return run_on_akash(args, run)
         if args.command_name == "status":
             return status(args)
+        if args.command_name == "setup":
+            return setup(args)
+        if args.command_name == "doctor":
+            return doctor()
     except (OSError, ProtocolError, ValueError) as error:
         Console(stderr=True).print(f"[red]error:[/red] {error}")
         return 1
@@ -175,11 +198,91 @@ def parser() -> argparse.ArgumentParser:
     akash_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
     akash_command.add_argument("--plain", action="store_true", help="print events without a live display")
     akash_command.add_argument("--yes", action="store_true", help="authorize the displayed spend limits")
+    akash_command.set_defaults(
+        adapter_module="one_more_run.akash_adapter",
+        evaluator=NUMERIC_EVALUATOR,
+    )
+
+    research_command = commands.add_parser(
+        "research",
+        help="let Codex improve a complete training program on an Akash GPU",
+    )
+    research_command.add_argument("research", type=Path, help="research objective in Markdown")
+    research_command.add_argument("--candidate", type=Path, default=Path("examples/code_candidate"))
+    research_command.add_argument("--workspace", type=Path, default=Path(".omr/autoresearch"))
+    research_command.add_argument("--sdl", type=Path, default=Path("deploy/akash.yaml"))
+    research_command.add_argument("--ledger", type=Path, default=Path("experiments.jsonl"))
+    research_command.add_argument("--max-runs", type=positive_int, default=3)
+    research_command.add_argument("--timeout", type=positive_float, default=900.0, metavar="SECONDS")
+    research_command.add_argument(
+        "--codex-timeout",
+        type=positive_float,
+        default=180.0,
+        metavar="SECONDS",
+    )
+    research_command.add_argument(
+        "--proposal-turns",
+        type=positive_int,
+        default=3,
+        help="maximum Codex edit turns before each GPU evaluation",
+    )
+    research_command.add_argument("--deposit", type=positive_float, default=0.5, metavar="USD")
+    research_command.add_argument("--max-bid", type=positive_float, default=1000.0, metavar="UACT")
+    research_command.add_argument("--model", help="optional Codex model override")
+    research_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
+    research_command.add_argument("--plain", action="store_true", help="print events without a live display")
+    research_command.add_argument("--yes", action="store_true", help="authorize the displayed spend limits")
+    research_command.set_defaults(
+        adapter_module="one_more_run.codex_adapter",
+        evaluator=CODE_EVALUATOR,
+    )
 
     status_command = commands.add_parser("status", help="show a saved experiment ledger")
     status_command.add_argument("ledger", type=Path, nargs="?", default=Path("experiments.jsonl"))
     status_command.add_argument("--maximize", action="store_true", help="higher metrics are better")
+
+    setup_command = commands.add_parser("setup", help="securely configure Codex and Akash credentials")
+    setup_command.add_argument(
+        "--from-env",
+        action="store_true",
+        help="import CODEX_API_KEY and AKASH_API_KEY from this process",
+    )
+
+    commands.add_parser("doctor", help="check Codex and Akash prerequisites without printing secrets")
     return root
+
+
+def setup(args: argparse.Namespace) -> int:
+    from one_more_run.settings import configure
+
+    location = configure(args.from_env)
+    Console().print(f"Credentials saved to [cyan]{location}[/cyan] with user-only permissions")
+    return 0
+
+
+def doctor() -> int:
+    from one_more_run.settings import secret
+
+    console = Console()
+    codex = shutil.which("codex")
+    codex_key = secret("CODEX_API_KEY")
+    logged_in = False
+    if codex and not codex_key:
+        result = subprocess.run(
+            [codex, "login", "status"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        logged_in = result.returncode == 0
+    checks = {
+        "Codex CLI": codex is not None,
+        "Codex authentication": bool(codex_key or logged_in),
+        "Akash credential": secret("AKASH_API_KEY") is not None,
+    }
+    for label, ready in checks.items():
+        console.print(f"{'[green]ready[/green]' if ready else '[red]missing[/red]'}  {label}")
+    return 0 if all(checks.values()) else 1
 
 
 def run(args: argparse.Namespace) -> int:
