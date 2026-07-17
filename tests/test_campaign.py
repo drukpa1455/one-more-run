@@ -2,6 +2,7 @@ import json
 from dataclasses import asdict
 
 import pytest
+from rich.console import Console
 
 from one_more_run import cli
 from one_more_run.cli import (
@@ -113,6 +114,20 @@ def test_split_adapter_keeps_run_options():
 
 def test_small_metrics_remain_visible():
     assert format_metric(7.155e-8) == "7.155e-08"
+
+
+def test_render_omits_unverified_costs():
+    campaign = Campaign("goal")
+    campaign.apply(
+        {"type": "campaign.started", "provider": "Akash · 42 uact/block"}
+    )
+    campaign.apply(start(1))
+    campaign.apply(finish(1, 1.0))
+    console = Console(record=True, width=120)
+
+    console.print(cli.render(campaign))
+
+    assert "COST" not in console.export_text()
 
 
 def test_doctor_checks_pomerium_only_when_requested(monkeypatch):
