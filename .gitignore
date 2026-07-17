@@ -1,0 +1,7 @@
+.omr/
+.pytest_cache/
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+experiments.jsonl

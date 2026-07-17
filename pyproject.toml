@@ -1,0 +1,25 @@
+[project]
+name = "one-more-run"
+version = "0.1.0"
+description = "Autonomous research runs on any compute"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "rich>=14.1,<15",
+]
+
+[project.scripts]
+omr = "one_more_run.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4,<9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
