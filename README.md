@@ -84,9 +84,8 @@ trial-eligible NVIDIA models and caps bids at `1000 uact` per block (about
 $0.60/hour at six-second blocks). Close the deployment immediately after the
 test.
 
-The worker image is published to GHCR from pinned GitHub Actions. The Akash SDL
-uses the moving `main` tag only during hackathon development; pin the resulting
-image digest before a judged run.
+The worker image is published to GHCR from pinned GitHub Actions, and the Akash
+SDL pins its immutable OCI digest.
 
 ## Hackathon target
 
