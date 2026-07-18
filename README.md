@@ -37,7 +37,7 @@ results, and renders the campaign.
 Configure credentials without putting them in shell history or the repository:
 
 ```bash
-uv sync
+uv sync --frozen
 uv run omr setup
 uv run omr doctor
 ```
@@ -69,17 +69,6 @@ hidden validation targets.
 
 ## Three-minute demo
 
-Run the campaign before recording so the demo does not depend on marketplace
-startup time:
-
-```bash
-uv run omr research research.md \
-  --max-runs 3 \
-  --workspace .omr/demo \
-  --ledger demo/experiments.jsonl \
-  --yes
-```
-
 The checked-in [verified Akash campaign](demo/README.md) contains three real
 GPU receipts and their complete source bundles. Its general neural candidate
 reduced MSE from `0.854451` to `0.002781`, a 99.67% reduction. A later
@@ -101,7 +90,7 @@ the checked-in real Akash ledger. The 2:45 replay leaves 15 seconds for the
 close. Before presenting, verify the environment once:
 
 ```bash
-uv run omr doctor && uv run pytest -q
+uv sync --frozen && uv run pytest -q
 ```
 
 To show a fresh loop instead, run the same controller against the deterministic
@@ -237,7 +226,7 @@ See [architecture](docs/architecture.md) and the
 - Credential-separated Akash GPU evaluation with fixed hidden data.
 - Optional Pomerium service identity in front of the private evaluator.
 - Fixed evaluation and bounded runs, time, and spend.
-- Live results with hypotheses, metrics, decisions, duration, and cost.
+- Live results with hypotheses, metrics, decisions, duration, and deployment receipt.
 - A content-addressed winning candidate and replayable `experiments.jsonl`.
 
 One More Prompt starts the idea. **One More Run tests it.**
