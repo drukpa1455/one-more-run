@@ -65,16 +65,13 @@ uv run omr research research.md \
 ## Before recording
 
 ```bash
-uv run omr doctor
-uv run omr research research.md \
-  --max-runs 3 \
-  --workspace .omr/demo \
-  --ledger demo/experiments.jsonl \
-  --yes
+uv sync --frozen
+uv run pytest -q
+uv run omr replay demo/experiments.jsonl --seconds 15
 ```
 
-Keep the full terminal capture, ledger, and winning workspace. They are the
-evidence behind the edited three-minute video.
+The short replay is a timing and rendering check. For the recording, rerun it
+with `--seconds 165`; do not overwrite the checked-in evidence ledger.
 
 ## Shot list and narration
 
